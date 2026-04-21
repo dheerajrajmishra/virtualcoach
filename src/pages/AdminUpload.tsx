@@ -14,8 +14,8 @@ import {
 } from "lucide-react";
 import { db, auth } from "../lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { motion, AnimatePresence } from "motion/react";
-import axios from "axios";
 
 const CATEGORIES = {
   "Enterprise Software": ["CRM", "ERP", "Cloud Infrastructure"],
@@ -71,19 +71,17 @@ export const AdminUpload: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      // Simulate backend processing
-      const data = new FormData();
-      data.append("name", formData.name as string);
-      data.append("category", formData.category as string);
-      data.append("subCategory", formData.subCategory as string);
-      data.append("productName", formData.productName as string);
-      data.append("languages", JSON.stringify(selectedLanguages));
-      
-      Object.entries(files).forEach(([key, file]) => {
-        if (file instanceof File) data.append(key, file);
-      });
+      const storage = getStorage();
+      const assetUrls: Record<string, string> = {};
 
-      const response = await axios.post("/api/trainings/upload", data);
+      // Upload files directly to Firebase Storage
+      for (const [key, file] of Object.entries(files)) {
+        if (file instanceof File) {
+          const fileRef = ref(storage, `trainings/${Date.now()}_${file.name}`);
+          await uploadBytes(fileRef, file);
+          assetUrls[key] = await getDownloadURL(fileRef);
+        }
+      }
       
       // Create Firestore doc
       await addDoc(collection(db, "trainings"), {
@@ -92,12 +90,13 @@ export const AdminUpload: React.FC = () => {
         status: "draft",
         createdBy: auth.currentUser?.uid || "unknown",
         createdAt: serverTimestamp(),
-        tempId: response.data.trainingId
+        assetUrls: assetUrls,
+        slideCount: 1 // Single deck document for now
       });
 
       setStep(3); // Success step
     } catch (err: any) {
-      setError(err.message || "Upload failed");
+      setError(err.message || "Upload failed. Ensure Firebase Storage is enabled.");
     } finally {
       setLoading(false);
     }

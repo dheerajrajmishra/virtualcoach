@@ -20,7 +20,9 @@ import {
   X,
   Send,
   Loader2,
-  Menu
+  Menu,
+  FileText,
+  List
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { geminiService } from "../services/geminiService";
@@ -32,7 +34,7 @@ export const LearnerPlayer: React.FC = () => {
   const [slides, setSlides] = useState<any[]>([]);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [selectedLang, setSelectedLang] = useState("en");
-  const [activeTab, setActiveTab] = useState<"qa" | "quiz" | "notes">("qa");
+  const [activeTab, setActiveTab] = useState<"qa" | "faqs" | "quiz" | "notes">("qa");
   
   // Mobile responsive state
   const [isLeftMenuOpen, setIsLeftMenuOpen] = useState(false);
@@ -42,6 +44,10 @@ export const LearnerPlayer: React.FC = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const audioRef = useRef<HTMLAudioElement>(null);
   
   // Tabs state
@@ -57,20 +63,77 @@ export const LearnerPlayer: React.FC = () => {
       const tDoc = await getDoc(doc(db, "trainings", trainingId));
       if (tDoc.exists()) {
         setTraining(tDoc.data());
-        // Mocking slides for this prototype
-        const slideCount = tDoc.data().slideCount || 5;
-        const mockSlides = Array.from({ length: slideCount }, (_, i) => ({
-          id: i + 1,
-          title: `Focus Topic: Section ${i + 1}`,
-          imageUrl: `https://picsum.photos/seed/training-${trainingId}-${i}/1200/800`,
-        }));
-        setSlides(mockSlides);
+        
+        const data = tDoc.data();
+        
+        // If real files were uploaded, show the slide deck
+        if (data.assetUrls && data.assetUrls.slides) {
+          setSlides([{
+            id: 1,
+            title: "Main Slide Deck",
+            fileUrl: data.assetUrls.slides
+          }]);
+        } else {
+          // Fallback to mock slides if no files were attached
+          const slideCount = data.slideCount || 5;
+          const mockSlides = Array.from({ length: slideCount }, (_, i) => ({
+            id: i + 1,
+            title: `Focus Topic: Section ${i + 1}`,
+            imageUrl: `https://picsum.photos/seed/training-${trainingId}-${i}/1200/800`,
+          }));
+          setSlides(mockSlides);
+        }
       }
     };
     fetchTraining();
   }, [trainingId]);
 
   const currentSlide = slides[currentSlideIndex];
+
+  // Media Playback Logic
+  useEffect(() => {
+    // Reset audio state on slide change
+    setIsPlaying(false);
+    setProgress(0);
+    setCurrentTime(0);
+    // Set a placeholder MP3 URL for the prototype based on the slide index
+    setAudioUrl(`https://www.soundhelix.com/examples/mp3/SoundHelix-Song-${(currentSlideIndex % 15) + 1}.mp3`);
+  }, [currentSlideIndex]);
+
+  useEffect(() => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.play().catch(e => {
+        console.error("Audio playback failed:", e);
+        setIsPlaying(false);
+      });
+    } else {
+      audioRef.current.pause();
+    }
+  }, [isPlaying, audioUrl]);
+
+  const formatTime = (time: number) => {
+    if (!time || isNaN(time)) return "00:00";
+    const m = Math.floor(time / 60);
+    const s = Math.floor(time % 60);
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (audioRef.current && duration) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const pos = (e.clientX - rect.left) / rect.width;
+      audioRef.current.currentTime = pos * duration;
+    }
+  };
+
+  const cyclePlaybackRate = () => {
+    const nextRate = playbackRate >= 2 ? 1 : playbackRate + 0.25;
+    setPlaybackRate(nextRate);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = nextRate;
+    }
+  };
 
   // Q&A logic
   const handleSendMessage = async () => {
@@ -97,6 +160,21 @@ export const LearnerPlayer: React.FC = () => {
 
   return (
     <div className="fixed inset-0 bg-slate-100 flex flex-col overflow-hidden text-slate-900 font-sans">
+      {/* Hidden Audio Engine */}
+      <audio
+        ref={audioRef}
+        src={audioUrl || ""}
+        onTimeUpdate={(e) => {
+          setCurrentTime(e.currentTarget.currentTime);
+          setProgress((e.currentTarget.currentTime / e.currentTarget.duration) * 100);
+        }}
+        onLoadedMetadata={(e) => {
+          setDuration(e.currentTarget.duration);
+          if (audioRef.current) audioRef.current.volume = volume;
+        }}
+        onEnded={() => setIsPlaying(false)}
+      />
+
       {/* Header */}
       <header className="h-16 px-4 lg:px-6 bg-white border-b border-slate-200 flex items-center justify-between z-30 shrink-0 shadow-sm">
         <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
@@ -132,10 +210,6 @@ export const LearnerPlayer: React.FC = () => {
              <div className="w-1.5 h-1.5 rounded-full bg-success" />
              AI Coach Ready
           </div>
-          <button onClick={() => setIsRightMenuOpen(!isRightMenuOpen)} className="lg:hidden flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-full transition-colors shadow-lg active:scale-95">
-            <MessageSquare size={16} />
-            <span className="text-[10px] font-bold uppercase tracking-widest">Ask FAQ</span>
-          </button>
         </div>
       </header>
 
@@ -151,8 +225,11 @@ export const LearnerPlayer: React.FC = () => {
 
         {/* LEFT: Slides List */}
         <aside className={`absolute lg:static inset-y-0 left-0 z-40 w-64 border-r border-slate-200 bg-white flex flex-col shrink-0 transform transition-transform duration-300 ${isLeftMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-           <div className="p-4 border-b border-slate-100 bg-slate-50/50">
+           <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
              <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Training Modules</h2>
+             <button onClick={() => setIsLeftMenuOpen(false)} className="lg:hidden p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200">
+               <X size={16} />
+             </button>
            </div>
            <div className="p-4 overflow-y-auto flex-1 space-y-3 custom-scrollbar">
              {slides.map((s, idx) => (
@@ -168,7 +245,13 @@ export const LearnerPlayer: React.FC = () => {
                   : "border-slate-200 opacity-70 hover:opacity-100 hover:border-slate-300 shadow-sm"
                 }`}
                >
-                 <img src={s.imageUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                 {s.fileUrl ? (
+                   <div className="w-full h-full bg-slate-100 flex items-center justify-center text-primary">
+                     <FileText size={32} opacity={0.5} />
+                   </div>
+                 ) : (
+                   <img src={s.imageUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                 )}
                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 to-transparent flex items-end p-2 transition-opacity group-hover:opacity-100">
                    <p className="text-[8px] font-bold uppercase tracking-wide truncate text-white">S.{s.id} {s.title}</p>
                  </div>
@@ -183,11 +266,19 @@ export const LearnerPlayer: React.FC = () => {
              <div className="w-full max-w-5xl aspect-[16/10] bg-white rounded-2xl overflow-hidden shadow-2xl relative border border-slate-200 group">
                 <div className="absolute top-6 left-6 text-slate-400 font-mono text-[9px] tracking-widest uppercase z-10">Proprietary Training Material</div>
                 {currentSlide && (
-                  <img 
-                    src={currentSlide.imageUrl} 
-                    className="w-full h-full object-contain" 
-                    referrerPolicy="no-referrer"
-                  />
+                  currentSlide.fileUrl ? (
+                    <iframe 
+                      src={`https://docs.google.com/gview?url=${encodeURIComponent(currentSlide.fileUrl)}&embedded=true`} 
+                      className="w-full h-full border-none z-0 relative"
+                      title={currentSlide.title}
+                    />
+                  ) : (
+                    <img 
+                      src={currentSlide.imageUrl} 
+                      className="w-full h-full object-contain z-0 relative" 
+                      referrerPolicy="no-referrer"
+                    />
+                  )
                 )}
                 
                 {/* Overlay Navigation */}
@@ -216,33 +307,52 @@ export const LearnerPlayer: React.FC = () => {
                    </button>
                 </div>
              </div>
+             
+             {/* Floating Mobile FAQ Button */}
+             <button 
+               onClick={() => setIsRightMenuOpen(true)}
+               className="lg:hidden absolute bottom-4 right-4 w-12 h-12 bg-primary text-white rounded-full flex items-center justify-center shadow-[0_8px_16px_rgba(24,95,165,0.4)] z-30 active:scale-95 transition-transform"
+             >
+               <HelpCircle size={24} />
+             </button>
           </div>
 
           {/* Footer Controls */}
           <div className="h-auto min-h-[5rem] py-4 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between px-4 lg:px-10 gap-4 lg:gap-8 shrink-0 shadow-sm relative z-20">
              <div className="flex items-center gap-2 lg:gap-4 w-full lg:w-auto flex-1 order-2 lg:order-1">
                <div className="text-[10px] font-bold text-slate-400 uppercase min-w-[32px]">
-                 01:23
+                 {formatTime(currentTime)}
                </div>
-               <div className="flex-1 relative h-2 bg-slate-100 rounded-full overflow-hidden group cursor-pointer">
-                  <div className="absolute inset-y-0 left-0 bg-primary group-hover:bg-primary/80 transition-colors shadow-[0_0_8px_rgba(24,95,165,0.4)]" style={{ width: '45%' }} />
-                  <div className="absolute top-1/2 -translate-y-1/2 left-[45%] w-4 h-4 bg-white border-2 border-primary rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity" />
+               <div 
+                 className="flex-1 relative h-2 bg-slate-100 rounded-full overflow-visible group cursor-pointer"
+                 onClick={handleSeek}
+               >
+                  <div className="absolute inset-y-0 left-0 bg-primary group-hover:bg-primary/80 transition-colors shadow-[0_0_8px_rgba(24,95,165,0.4)] rounded-full" style={{ width: `${progress || 0}%` }} />
+                  <div className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-2 border-primary rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity" style={{ left: `calc(${progress || 0}% - 8px)` }} />
                </div>
                <div className="text-[10px] font-bold text-slate-400 uppercase min-w-[32px]">
-                 04:45
+                 {formatTime(duration)}
                </div>
              </div>
 
              <div className="flex items-center gap-4 lg:gap-6 order-1 lg:order-2 w-full lg:w-auto justify-between lg:justify-end">
                 <div className="flex items-center gap-2 group cursor-pointer">
                    <Volume2 size={18} className="text-slate-400 group-hover:text-primary transition-colors" />
-                   <div className="w-20 lg:w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-primary/40 w-2/3" />
+                   <div 
+                     className="w-20 lg:w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden cursor-pointer"
+                     onClick={(e) => {
+                       const rect = e.currentTarget.getBoundingClientRect();
+                       const newVol = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                       setVolume(newVol);
+                       if (audioRef.current) audioRef.current.volume = newVol;
+                     }}
+                   >
+                      <div className="h-full bg-primary/40" style={{ width: `${volume * 100}%` }} />
                    </div>
                 </div>
                 <div className="hidden lg:block h-8 w-[1px] bg-slate-200" />
-                <button className="px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[10px] font-bold text-slate-600 hover:text-primary transition-colors">
-                   1.25x
+                <button onClick={cyclePlaybackRate} className="w-12 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[10px] font-bold text-slate-600 hover:text-primary transition-colors">
+                   {playbackRate}x
                 </button>
              </div>
           </div>
@@ -257,12 +367,16 @@ export const LearnerPlayer: React.FC = () => {
         )}
 
         {/* RIGHT: Tabs */}
-        <aside className={`absolute lg:static inset-y-0 right-0 z-40 w-80 md:w-96 border-l border-slate-200 bg-white flex flex-col shrink-0 overflow-hidden transform transition-transform duration-300 ${isRightMenuOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}`}>
+        <aside className={`absolute lg:static inset-y-0 right-0 z-40 w-[85vw] max-w-sm lg:w-96 lg:max-w-none border-l border-slate-200 bg-white flex flex-col shrink-0 overflow-hidden transform transition-transform duration-300 ${isRightMenuOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}`}>
            {/* Tab Headers */}
-           <div className="flex border-b border-slate-200 bg-white shrink-0">
-              <TabButton active={activeTab === "qa"} onClick={() => setActiveTab("qa")} icon={<MessageSquare size={16} />} title="Ask Coach" />
+           <div className="flex border-b border-slate-200 bg-white shrink-0 overflow-x-auto custom-scrollbar">
+              <TabButton active={activeTab === "qa"} onClick={() => setActiveTab("qa")} icon={<MessageSquare size={16} />} title="Coach" />
+              <TabButton active={activeTab === "faqs"} onClick={() => setActiveTab("faqs")} icon={<List size={16} />} title="FAQs" />
               <TabButton active={activeTab === "quiz"} onClick={() => setActiveTab("quiz")} icon={<HelpCircle size={16} />} title="Quiz" />
               <TabButton active={activeTab === "notes"} onClick={() => setActiveTab("notes")} icon={<StickyNote size={16} />} title="Notes" />
+              <button onClick={() => setIsRightMenuOpen(false)} className="lg:hidden shrink-0 px-4 text-slate-400 hover:text-slate-600 bg-slate-50 border-l border-slate-200 flex items-center justify-center">
+                 <X size={16} />
+              </button>
            </div>
 
            {/* Tab Content */}
@@ -338,6 +452,32 @@ export const LearnerPlayer: React.FC = () => {
                    </motion.div>
                 )}
 
+                {activeTab === "faqs" && (
+                   <motion.div 
+                    key="faqs"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    className="absolute inset-0 p-4 md:p-6 space-y-6 overflow-y-auto custom-scrollbar bg-slate-50/30"
+                   >
+                     <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Frequently Asked Questions</h4>
+                     </div>
+                     <div className="space-y-4">
+                        {[
+                          { q: "What is CloudConnect?", a: "CloudConnect is our enterprise CRM synchronization tool." },
+                          { q: "How safe is the data?", a: "All data is encrypted using AES-256 both in transit and at rest." },
+                          { q: "Can I use it offline?", a: "Yes, the mobile app caches your changes and syncs when reconnected." }
+                        ].map((faq, idx) => (
+                           <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                              <p className="text-sm font-bold text-slate-900 mb-2">{faq.q}</p>
+                              <p className="text-xs font-medium text-slate-600 leading-relaxed">{faq.a}</p>
+                           </div>
+                        ))}
+                     </div>
+                   </motion.div>
+                )}
+
                 {activeTab === "quiz" && (
                    <motion.div 
                     key="quiz"
@@ -402,7 +542,7 @@ export const LearnerPlayer: React.FC = () => {
 const TabButton = ({ active, onClick, icon, title }: any) => (
   <button
     onClick={onClick}
-    className={`flex-1 flex flex-col items-center gap-1.5 py-4 transition-all relative border-b-2 ${
+    className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 px-2 transition-all relative border-b-2 min-w-[70px] ${
       active ? "text-primary border-primary bg-slate-50/50" : "text-slate-400 border-transparent hover:text-slate-600 hover:bg-slate-50/50"
     }`}
   >
