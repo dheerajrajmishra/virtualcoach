@@ -1,0 +1,9 @@
+{
+  "name": "VirtualCoach",
+  "description": "AI-powered training delivery platform for enterprise sales teams featuring multi-lingual support, AI coaching, and comprehensive analytics.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": []
+}

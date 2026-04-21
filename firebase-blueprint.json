@@ -1,0 +1,113 @@
+{
+  "entities": {
+    "Training": {
+      "title": "Training",
+      "description": "Definition of a training module",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "subCategory": { "type": "string" },
+        "productName": { "type": "string" },
+        "slideCount": { "type": "number" },
+        "languages": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["draft", "published"] },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "status"]
+    },
+    "Transcript": {
+      "title": "Transcript",
+      "description": "Audio and text transcripts for a specific slide and language",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "audioUrl": { "type": "string" },
+        "source": { "type": "string", "enum": ["uploaded", "auto-generated"] }
+      }
+    },
+    "FAQ": {
+      "title": "FAQ Item",
+      "description": "FAQ question and answer for a training",
+      "type": "object",
+      "properties": {
+        "slideNo": { "type": "number" },
+        "question": { "type": "string" },
+        "answer": { "type": "string" },
+        "questionLang": { "type": "string" },
+        "answerLang": { "type": "string" },
+        "embeddingId": { "type": "string" }
+      }
+    },
+    "Quiz": {
+      "title": "Quiz Item",
+      "description": "Quiz question and correct answer",
+      "type": "object",
+      "properties": {
+        "slideNo": { "type": "number" },
+        "question": { "type": "string" },
+        "answer": { "type": "string" },
+        "questionLang": { "type": "string" },
+        "answerLang": { "type": "string" }
+      }
+    },
+    "Assignment": {
+      "title": "Training Assignment",
+      "description": "Assigns a training to a user",
+      "type": "object",
+      "properties": {
+        "trainingId": { "type": "string" },
+        "userId": { "type": "string" },
+        "deadline": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "completed"] },
+        "assignedAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Progress": {
+      "title": "User Training Progress",
+      "description": "Tracks progress of a user in a training",
+      "type": "object",
+      "properties": {
+        "watched": { "type": "boolean" },
+        "audioPercent": { "type": "number" },
+        "lastVisitedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "QuizResult": {
+      "title": "User Quiz Result",
+      "description": "Result of a user attempt at a quiz",
+      "type": "object",
+      "properties": {
+        "correct": { "type": "boolean" },
+        "userAnswer": { "type": "string" },
+        "feedback": { "type": "string" },
+        "attempts": { "type": "number" },
+        "attemptAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "User": {
+      "title": "User Profile",
+      "description": "User account information",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "learner"] },
+        "teamId": { "type": "string" },
+        "langPreference": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/trainings/{trainingId}": { "schema": "Training", "description": "Core training metadata" },
+    "/transcripts/{trainingId}/{slideNo}/{lang}": { "schema": "Transcript", "description": "Audio/Text content" },
+    "/faqs/{trainingId}/items/{faqId}": { "schema": "FAQ", "description": "Training FAQs" },
+    "/quizzes/{trainingId}/items/{quizId}": { "schema": "Quiz", "description": "Training Quizzes" },
+    "/assignments/{assignmentId}": { "schema": "Assignment", "description": "User assignments" },
+    "/progress/{userId}/{trainingId}/{slideNo}": { "schema": "Progress", "description": "Slide-level progress" },
+    "/quizResults/{userId}/{trainingId}/{slideNo}": { "schema": "QuizResult", "description": "Quiz results" },
+    "/users/{userId}": { "schema": "User", "description": "User profiles" }
+  }
+}

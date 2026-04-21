@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow all access for testing.
+    // WARNING: This is insecure and should not be used in production.
+    match /{document=**} {
+      allow read, write: if true;
+    }
+
+    /* --- Previous Secure Rules ---
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() { return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // --- User Profiles ---
+    match /users/{userId} {
+      // Admins can read/list all users. Users can only read their own profile.
+      allow read: if isAdmin() || isOwner(userId);
+      allow create: if isOwner(userId) && incoming().role == 'learner';
+      allow update: if isAdmin() || (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'langPreference']));
+    }
+
+    // --- Trainings ---
+    match /trainings/{trainingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // --- Transcripts ---
+    match /transcripts/{trainingId}/{slideNo}/{lang} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // --- FAQs & Quizzes ---
+    match /faqs/{trainingId}/items/{faqId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /quizzes/{trainingId}/items/{quizId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // --- Assignments ---
+    match /assignments/{assignmentId} {
+      allow read: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isAdmin();
+      allow update: if isOwner(existing().userId) && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'completedAt']);
+    }
+
+    // --- Progress ---
+    match /progress/{userId}/{trainingId}/{slideNo} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId);
+    }
+
+    // --- Quiz Results ---
+    match /quizResults/{userId}/{trainingId}/{slideNo} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId);
+    }
+    */
+  }
+}
