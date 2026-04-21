@@ -106,7 +106,7 @@ export const AdminUpload: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto py-4">
       {/* Stepper */}
-      <div className="flex items-center justify-between mb-12 px-8">
+      <div className="flex items-center justify-between mb-8 md:mb-12 px-2 md:px-8">
         {[1, 2, 3].map((s) => (
           <div key={s} className="flex items-center flex-1 last:flex-none">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all shadow-sm ${
@@ -131,10 +131,10 @@ export const AdminUpload: React.FC = () => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="bg-white rounded-3xl p-10 shadow-sm border border-slate-100"
+            className="bg-white rounded-3xl p-6 md:p-10 shadow-sm border border-slate-100"
           >
             <div className="mb-10">
-              <h2 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">Training Details</h2>
+              <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-2">Training Details</h2>
               <p className="text-slate-500">Provide basic metadata for the new sales training module.</p>
             </div>
 
@@ -207,7 +207,7 @@ export const AdminUpload: React.FC = () => {
               <button
                 disabled={!formData.name || !formData.category}
                 onClick={nextStep}
-                className="bg-primary text-white px-8 py-4 rounded-xl font-bold flex items-center gap-2 hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl shadow-primary/20 active:scale-[0.98]"
+                className="w-full md:w-auto bg-primary text-white px-8 py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl shadow-primary/20 active:scale-[0.98]"
               >
                 Next Step
                 <ChevronRight size={20} />
@@ -224,9 +224,9 @@ export const AdminUpload: React.FC = () => {
             exit={{ opacity: 0, y: -10 }}
             className="space-y-6"
           >
-            <div className="bg-white rounded-3xl p-10 shadow-sm border border-slate-100">
+            <div className="bg-white rounded-3xl p-6 md:p-10 shadow-sm border border-slate-100">
               <div className="mb-10">
-                <h2 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">Upload Assets</h2>
+                <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-2">Upload Assets</h2>
                 <p className="text-slate-500">Attach slide decks, transcripts, and quizzes for processing.</p>
               </div>
 
@@ -257,14 +257,14 @@ export const AdminUpload: React.FC = () => {
                 />
               </div>
 
-              <div className="flex justify-between items-center">
-                <button onClick={prevStep} className="text-slate-500 font-bold hover:text-slate-700 underline underline-offset-4">
+              <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+                <button onClick={prevStep} className="order-2 md:order-1 text-slate-500 font-bold hover:text-slate-700 underline underline-offset-4">
                   Go Back
                 </button>
                 <button
                   disabled={loading || !files.slides}
                   onClick={handleUpload}
-                  className="bg-primary text-white px-8 py-4 rounded-xl font-bold flex items-center gap-2 hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl shadow-primary/20 active:scale-[0.98]"
+                  className="order-1 md:order-2 w-full md:w-auto bg-primary text-white px-8 py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl shadow-primary/20 active:scale-[0.98]"
                 >
                   {loading ? <Loader2 className="animate-spin" size={20} /> : <Upload size={20} />}
                   {loading ? "Processing..." : "Generate Assets"}

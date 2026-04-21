@@ -53,12 +53,12 @@ export const LearnerDashboard: React.FC = () => {
   return (
     <div className="space-y-12">
       {/* Welcome Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div className="space-y-1">
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900 leading-[0.9]">Learner<br/>Dashboard</h1>
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-slate-900 leading-[0.9]">Learner<br/>Dashboard</h1>
           <p className="text-slate-500 font-medium tracking-tight">You have {incomplete.length} pending trainings to complete.</p>
         </div>
-        <div className="flex gap-4">
+        <div className="grid grid-cols-2 lg:flex gap-4 w-full lg:w-auto">
            <StatCard label="Completed" value={completed.length} icon={<Award className="text-amber-500" />} />
            <StatCard label="Continuous Streak" value="12 Days" icon={<TrendingUp className="text-success" />} />
         </div>

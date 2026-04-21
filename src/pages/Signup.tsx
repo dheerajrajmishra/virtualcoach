@@ -57,7 +57,7 @@ export const Signup: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-white overflow-hidden">
       {/* Left side - Branding */}
-      <div className="w-full md:w-1/2 bg-primary flex flex-col items-center justify-center text-white p-12 relative overflow-hidden">
+      <div className="hidden md:flex w-full md:w-1/2 bg-primary flex-col items-center justify-center text-white p-12 relative overflow-hidden">
          <div className="absolute inset-0 opacity-10 pointer-events-none">
             <div className="absolute top-10 -left-20 w-96 h-96 border-[1px] border-white rounded-full"></div>
             <div className="absolute bottom-40 left-40 w-80 h-80 border-[1px] border-white rounded-full"></div>
@@ -76,14 +76,19 @@ export const Signup: React.FC = () => {
       </div>
 
       {/* Right side - Signup Form */}
-      <div className="w-full md:w-1/2 flex items-center justify-center p-8 bg-slate-50 relative">
+      <div className="w-full md:w-1/2 flex flex-col items-center justify-center p-6 md:p-12 bg-slate-50/50 relative">
         <motion.div 
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           className="max-w-sm w-full space-y-12"
         >
+          <div className="md:hidden flex items-center gap-3 mb-8">
+            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg">V</div>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight uppercase">VirtualCoach</h1>
+          </div>
+
           <div className="space-y-4">
-            <h2 className="text-4xl font-bold tracking-tight text-slate-900 leading-[0.9]">Create<br/>Account</h2>
+            <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-slate-900 leading-[0.9]">Create<br/>Account</h2>
             <p className="text-slate-500 font-medium">Join the platform to start your learning journey.</p>
           </div>
 

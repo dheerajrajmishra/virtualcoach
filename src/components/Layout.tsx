@@ -94,9 +94,9 @@ export const Layout: React.FC<LayoutProps> = ({ portal }) => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden relative bg-slate-50">
+      <main className="flex-1 flex flex-col overflow-hidden relative bg-slate-50/50">
         {/* Mobile Header */}
-        <div className="md:hidden flex items-center justify-between p-4 bg-white border-b border-slate-200 shadow-sm z-30">
+        <div className="md:hidden flex items-center justify-between p-4 bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-sm z-30 sticky top-0">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white font-bold text-sm">V</div>
             <h1 className="text-sm font-semibold text-slate-900 tracking-tight uppercase">VirtualCoach</h1>

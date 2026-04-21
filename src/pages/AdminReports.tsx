@@ -13,18 +13,18 @@ import { motion } from "motion/react";
 export const AdminReports: React.FC = () => {
   return (
     <div className="space-y-12">
-      <div className="flex items-end justify-between">
-        <div className="space-y-1">
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900 leading-[0.9]">Analytics<br/>Insights</h1>
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="space-y-1 md:space-y-2">
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-slate-900 leading-[0.9]">Analytics<br/>Insights</h1>
           <p className="text-slate-500 font-medium">Global performance metrics and team-level proficiency tracking.</p>
         </div>
-        <button className="flex items-center gap-2 px-6 py-3 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-xs uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm">
+        <button className="w-full md:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-xs uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm">
            <Download size={16} />
            Export Report
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
         <MetricCard label="Total Completions" value="1,284" change="+12.5%" trend="up" icon={<TrendingUp className="text-primary" />} />
         <MetricCard label="Avg. Score" value="88%" change="+2.1%" trend="up" icon={<Target className="text-accent" />} />
         <MetricCard label="Active Learners" value="482" change="-3.4%" trend="down" icon={<Users className="text-slate-400" />} />

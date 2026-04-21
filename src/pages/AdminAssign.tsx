@@ -61,9 +61,9 @@ export const AdminAssign: React.FC = () => {
   if (loading) return <div>Loading...</div>;
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-8 md:space-y-12">
       <div className="space-y-1">
-        <h1 className="text-4xl font-bold tracking-tight text-slate-900 leading-[0.9]">Assign<br/>Trainings</h1>
+        <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-slate-900 leading-[0.9]">Assign<br/>Trainings</h1>
         <p className="text-slate-500 font-medium">Select a module and assign it to individual learners or teams.</p>
       </div>
 
