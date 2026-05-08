@@ -296,7 +296,7 @@ function PhonePreviewModal({
       <div className="flex flex-col items-center gap-4" onClick={e => e.stopPropagation()}>
 
         {/* Top controls row */}
-        <div className="flex items-center justify-between w-full" style={{ minWidth: isLandscape ? 600 : 340 }}>
+        <div className="flex items-center justify-between w-full" style={{ minWidth: isLandscape ? 660 : 340 }}>
           <div className="flex items-center gap-2 text-white/80 text-sm font-medium">
             <Smartphone size={15} /> Mobile Preview
           </div>
@@ -365,56 +365,124 @@ function PhonePreviewModal({
 
         {/* ── Landscape frame ── */}
         {isLandscape && (
-          <div
-            className="bg-gray-950 rounded-[2rem] border-[6px] border-gray-800 shadow-2xl flex flex-col"
-            style={{ width: 620, height: 320 }}
-          >
-            {/* Status bar (thin, horizontal) */}
-            <div className="flex items-center justify-between px-6 py-1 text-white/60 flex-shrink-0">
-              <span className="text-[9px] font-semibold">9:41</span>
-              <div className="w-14 h-4 bg-gray-950 rounded-full flex items-center justify-center">
-                <div className="w-2 h-2 rounded-full bg-gray-800 border border-gray-700" />
-              </div>
-              <span className="text-[9px]">▊ 100%</span>
-            </div>
+          <div className="relative" style={{ width: 660, height: 312 }}>
+            {/* Phone hardware chrome */}
+            {/* Power button — top edge */}
+            <div className="absolute top-0 right-20 w-12 h-[4px] bg-gray-600 rounded-full z-10" style={{ top: -2 }} />
+            {/* Volume up — bottom edge */}
+            <div className="absolute left-16 w-9 h-[4px] bg-gray-600 rounded-full z-10" style={{ bottom: -2 }} />
+            {/* Volume down — bottom edge */}
+            <div className="absolute left-28 w-6 h-[4px] bg-gray-600 rounded-full z-10" style={{ bottom: -2 }} />
+            {/* Camera — right side center */}
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[5px] h-[5px] rounded-full bg-gray-500 border border-gray-400 z-10" style={{ right: -1 }} />
 
-            {/* Screen — flex-row */}
-            <div className="flex-1 bg-white rounded-[1.6rem] overflow-hidden flex flex-row min-h-0">
+            {/* Frame shell */}
+            <div
+              className="w-full h-full bg-gray-900 shadow-2xl overflow-hidden flex flex-row"
+              style={{ borderRadius: '2.2rem', border: '7px solid #111827' }}
+            >
+              {/* Left: slide image — 58% */}
+              <div className="relative bg-gray-950 flex-shrink-0 overflow-hidden" style={{ width: '58%' }}>
+                {/* Status bar overlaid on slide */}
+                <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-3 py-1.5 bg-gradient-to-b from-black/60 to-transparent pointer-events-none">
+                  <span className="text-[9px] text-white/90 font-semibold">9:41</span>
+                  <span className="text-[9px] text-white/80 font-medium">▊ 100%</span>
+                </div>
 
-              {/* Left: slide image fills full height */}
-              <div className="relative bg-gray-900 flex-shrink-0" style={{ width: '54%' }}>
                 {slide?.imageGcsUrl ? (
                   <img src={slide.imageGcsUrl} alt="" className="absolute inset-0 w-full h-full object-contain" />
                 ) : (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-primary-900 to-indigo-900">
-                    <MonitorPlay size={28} className="text-white/40 mb-2" />
-                    <p className="text-white/80 text-xs font-medium text-center px-4 leading-snug">{slide?.title}</p>
+                    <MonitorPlay size={26} className="text-white/40 mb-2" />
+                    <p className="text-white/80 text-[11px] font-medium text-center px-4 leading-snug">{slide?.title}</p>
                   </div>
                 )}
-                <div className="absolute bottom-2 right-2 w-11 h-11 rounded-full border-2 border-white shadow-lg overflow-hidden">
-                  <AvatarDisplay config={avatarConfig} size={44} />
+
+                {/* Avatar — smaller in landscape */}
+                <div className="absolute bottom-2 right-2 w-8 h-8 rounded-full border-2 border-white/90 shadow-lg overflow-hidden">
+                  <AvatarDisplay config={avatarConfig} size={32} />
                 </div>
               </div>
 
-              {/* Right: content column */}
-              <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                <AppHeader />
+              {/* Right: app content — 42% */}
+              <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white">
 
-                {/* Title */}
+                {/* Compact app header */}
+                <div className="px-3 py-2 bg-primary-700 flex items-center gap-1.5 flex-shrink-0">
+                  <div className="w-5 h-5 rounded-full overflow-hidden border border-white/40 flex-shrink-0">
+                    <AvatarDisplay config={avatarConfig} size={20} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-[10px] font-bold leading-none truncate">Pitch Perfect</p>
+                    <p className="text-white/60 text-[8px] mt-0.5">{LANG_META[locale]?.name ?? locale}</p>
+                  </div>
+                  <span className="text-white/60 text-[9px] flex-shrink-0 font-medium">{currentIndex + 1}/{slides.length}</span>
+                </div>
+
+                {/* Slide title */}
                 <div className="px-3 pt-2 pb-1 flex-shrink-0">
-                  <h3 className="text-xs font-bold text-gray-900 truncate">
+                  <h3 className="text-[11px] font-bold text-gray-900 leading-tight line-clamp-2">
                     {slide?.title || `Slide ${slide?.slideIndex}`}
                   </h3>
-                  <p className="text-[9px] text-gray-400">
+                  <p className="text-[8px] text-gray-400 mt-0.5">
                     {LANG_META[locale]?.flag} {LANG_META[locale]?.name ?? locale}
                   </p>
                 </div>
 
-                <TranscriptSection compact />
+                {/* Transcript */}
+                <div className="flex-shrink-0 border-t border-gray-100">
+                  <button
+                    onClick={() => setTranscriptOpen(v => !v)}
+                    className="w-full flex items-center justify-between px-3 py-1.5 text-left"
+                  >
+                    <span className="flex items-center gap-1 text-[10px] font-semibold text-gray-600">
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${transcript ? 'bg-primary-400' : 'bg-gray-300'}`} />
+                      Transcript
+                      {transcript && <span className="text-[8px] font-normal text-gray-400">· {transcript.split(' ').length}w</span>}
+                    </span>
+                    <ChevronDown size={11} className={`text-gray-400 transition-transform flex-shrink-0 ${transcriptOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {transcriptOpen && (
+                    <div className="px-3 pb-2 overflow-y-auto max-h-[60px]">
+                      {transcript
+                        ? <p className="text-[10px] text-gray-600 leading-relaxed">{transcript}</p>
+                        : <p className="text-[10px] text-gray-400 italic">No transcript.</p>}
+                    </div>
+                  )}
+                </div>
 
-                <div className="flex-1" />
-                <AudioBar />
-                <NavBar />
+                <div className="flex-1 min-h-0" />
+
+                {/* Compact audio bar */}
+                <div className="px-3 py-1.5 border-t border-gray-100 flex-shrink-0">
+                  <div className="flex items-center gap-2 bg-primary-50 rounded-lg px-2.5 py-1.5">
+                    <div className="w-5 h-5 rounded-full bg-primary-600 flex items-center justify-center flex-shrink-0">
+                      <Play size={8} className="text-white ml-0.5" />
+                    </div>
+                    <div className="flex-1 h-0.5 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full w-0 bg-primary-400 rounded-full" />
+                    </div>
+                    <span className="text-[9px] text-gray-400 flex-shrink-0">0:00</span>
+                  </div>
+                </div>
+
+                {/* Compact nav bar */}
+                <div className="px-3 pb-2.5 pt-1 flex items-center justify-between flex-shrink-0">
+                  <button onClick={() => goTo(currentIndex - 1)} disabled={currentIndex === 0}
+                    className="text-[10px] text-gray-400 disabled:opacity-30 flex items-center gap-0.5 font-medium">
+                    <ChevronLeft size={10} /> Prev
+                  </button>
+                  <div className="flex items-center gap-1">
+                    {slides.slice(0, 6).map((_, i) => (
+                      <div key={i} className={`rounded-full transition-all ${i === currentIndex ? 'w-2.5 h-1 bg-primary-500' : 'w-1 h-1 bg-gray-200'}`} />
+                    ))}
+                    {slides.length > 6 && <span className="text-[8px] text-gray-400">+{slides.length - 6}</span>}
+                  </div>
+                  <button onClick={() => goTo(currentIndex + 1)} disabled={currentIndex === slides.length - 1}
+                    className="text-[10px] text-primary-600 disabled:opacity-30 flex items-center gap-0.5 font-medium">
+                    Next <ChevronRight size={10} />
+                  </button>
+                </div>
               </div>
             </div>
           </div>

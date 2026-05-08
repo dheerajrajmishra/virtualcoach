@@ -27,12 +27,16 @@
         "backgroundColor": "#1a1a2e"
       },
       "package": "com.pitchperfect.app",
-      "permissions": ["RECORD_AUDIO", "CAMERA"]
+      "permissions": [
+        "RECORD_AUDIO",
+        "CAMERA"
+      ]
     },
     "plugins": [
       "expo-router",
       "expo-av",
-      "expo-camera"
+      "expo-camera",
+      "expo-font"
     ],
     "web": {
       "bundler": "metro",
