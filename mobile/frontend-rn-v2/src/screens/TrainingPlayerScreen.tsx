@@ -82,12 +82,20 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   // ── Fullscreen ─────────────────────────────────────────────────────────────
   const [isFullscreen, setIsFullscreen]       = useState(false);
   const [showFsControls, setShowFsControls]   = useState(true);
+  const [showPlayFlash, setShowPlayFlash]     = useState(false);  // center tap indicator
   const fsControlsTimer                       = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playFlashTimer                        = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Refs so PanResponder (created once) always reads latest values
   const currentIndexRef                       = useRef(0);
   const slidesLenRef                          = useRef(0);
   useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
   useEffect(() => { slidesLenRef.current = slides.length; }, [slides.length]);
+
+  // Hide/restore status bar imperatively — avoids the <StatusBar> JSX flash
+  useEffect(() => {
+    StatusBar.setHidden(isFullscreen, 'fade');
+    return () => { if (isFullscreen) StatusBar.setHidden(false, 'none'); };
+  }, [isFullscreen]);
 
   // ── Inline transcript toggle ───────────────────────────────────────────────
   const [showBottomTranscript, setShowBottomTranscript] = useState(false);
@@ -179,6 +187,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   useEffect(() => () => {
     if (autoAdvanceTimer.current) clearInterval(autoAdvanceTimer.current);
     if (fsControlsTimer.current) clearTimeout(fsControlsTimer.current);
+    if (playFlashTimer.current) clearTimeout(playFlashTimer.current);
   }, []);
 
   // ── Fullscreen pan responder ───────────────────────────────────────────────
@@ -219,6 +228,15 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     setShowFsControls(true);
     if (fsControlsTimer.current) clearTimeout(fsControlsTimer.current);
     fsControlsTimer.current = setTimeout(() => setShowFsControls(false), 3000);
+  }
+
+  // Tap inside fullscreen: play/pause + brief center icon flash + show controls
+  function handleFsTap() {
+    togglePlay();
+    setShowPlayFlash(true);
+    if (playFlashTimer.current) clearTimeout(playFlashTimer.current);
+    playFlashTimer.current = setTimeout(() => setShowPlayFlash(false), 650);
+    showFsControlsAndScheduleHide();
   }
 
   function enterFullscreen() {
@@ -433,15 +451,16 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     </View>
   );
 
-  // ── FULLSCREEN PLAYER ──────────────────────────────────────────────────────
-  const FullscreenPlayer = () => (
+  // ── FULLSCREEN MODAL ──────────────────────────────────────────────────────
+  // JSX variable (not a sub-component) so React reconciles by stable element
+  // types (Modal, View, …) instead of remounting the whole tree every 250 ms
+  // when positionMs ticks. AudioTrack is inlined for the same reason.
+  const fsModal = (
     <Modal
       visible={isFullscreen}
       animationType="fade"
       statusBarTranslucent
       onRequestClose={() => setIsFullscreen(false)}>
-
-      <StatusBar hidden backgroundColor="transparent" translucent />
 
       {/* Root captures swipe gestures (only horizontal moves, not taps) */}
       <View style={s.fsRoot} {...fsPanResponder.panHandlers}>
@@ -462,14 +481,14 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
           </View>
         )}
 
-        {/* Full-area tap target — play/pause + show controls */}
+        {/* Full-area tap target — play/pause + brief center icon flash */}
         <TouchableOpacity
           style={StyleSheet.absoluteFill}
           activeOpacity={1}
-          onPress={() => { togglePlay(); showFsControlsAndScheduleHide(); }}>
+          onPress={handleFsTap}>
 
-          {/* Center play/pause flash — shown briefly */}
-          {showFsControls && (
+          {/* Center flash — shown only for 650 ms after each tap */}
+          {showPlayFlash && (
             <View style={s.fsCenterIndicator} pointerEvents="none">
               <View style={s.fsCenterCircle}>
                 {audioLoading
@@ -480,67 +499,86 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
           )}
         </TouchableOpacity>
 
-        {/* Controls overlay — box-none so empty areas pass taps to TouchableOpacity above */}
-        {showFsControls && (
-          <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+        {/* Controls overlay — always mounted, opacity-driven so no remount flicker */}
+        <View
+          style={[StyleSheet.absoluteFill, { opacity: showFsControls ? 1 : 0 }]}
+          pointerEvents={showFsControls ? 'box-none' : 'none'}>
 
-            {/* Top bar: counter + title + exit */}
-            <View style={[s.fsTopBar, { paddingTop: insets.top + 10, paddingHorizontal: insets.left + 16 }]}
-              pointerEvents="box-none">
-              <View style={s.fsCounterBadge}>
-                <Text style={s.fsCounterTxt}>{currentIndex + 1} / {slides.length}</Text>
-              </View>
-              <Text style={s.fsTitleTxt} numberOfLines={1}>{slide?.title ?? training.name}</Text>
-              <TouchableOpacity style={s.fsExitBtn} onPress={() => setIsFullscreen(false)}>
-                <CompressIcon size={18} color="#fff" />
-              </TouchableOpacity>
+          {/* Top bar: counter + title + exit */}
+          <View style={[s.fsTopBar, { paddingTop: insets.top + 10, paddingHorizontal: insets.left + 16 }]}
+            pointerEvents="box-none">
+            <View style={s.fsCounterBadge}>
+              <Text style={s.fsCounterTxt}>{currentIndex + 1} / {slides.length}</Text>
             </View>
+            <Text style={s.fsTitleTxt} numberOfLines={1}>{slide?.title ?? training.name}</Text>
+            <TouchableOpacity style={s.fsExitBtn} onPress={() => setIsFullscreen(false)}>
+              <CompressIcon size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
 
-            {/* Left / Right swipe arrow hints */}
-            {currentIndex > 0 && (
-              <View style={s.fsPrevHint} pointerEvents="none">
-                <Text style={s.fsNavArrow}>‹</Text>
-              </View>
-            )}
-            {currentIndex < slides.length - 1 && (
-              <View style={s.fsNextHint} pointerEvents="none">
-                <Text style={s.fsNavArrow}>›</Text>
-              </View>
-            )}
-
-            {/* Slide dot indicator */}
-            <View style={s.fsDotsRow} pointerEvents="none">
-              {slides.map((_, i) => (
-                <View key={i} style={[s.fsDot, i === currentIndex && s.fsDotActive]} />
-              ))}
+          {/* Left / Right swipe arrow hints */}
+          {currentIndex > 0 && (
+            <View style={s.fsPrevHint} pointerEvents="none">
+              <Text style={s.fsNavArrow}>‹</Text>
             </View>
+          )}
+          {currentIndex < slides.length - 1 && (
+            <View style={s.fsNextHint} pointerEvents="none">
+              <Text style={s.fsNavArrow}>›</Text>
+            </View>
+          )}
 
-            {/* Bottom audio controls */}
-            <View style={[s.fsBottomBar, { paddingBottom: insets.bottom + 12, paddingHorizontal: insets.left + 14 }]}
-              pointerEvents="box-none">
-              <TouchableOpacity style={s.fsPlayBtn} onPress={togglePlay} disabled={audioLoading || !audioUrl}>
-                {audioLoading
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text style={s.playIcon}>{!audioUrl ? '🔇' : isPlaying ? '⏸' : '▶'}</Text>}
-              </TouchableOpacity>
-              <AudioTrack onInteract={showFsControlsAndScheduleHide} />
+          {/* Slide dot indicator */}
+          <View style={s.fsDotsRow} pointerEvents="none">
+            {slides.map((_, i) => (
+              <View key={i} style={[s.fsDot, i === currentIndex && s.fsDotActive]} />
+            ))}
+          </View>
+
+          {/* Bottom audio controls — AudioTrack inlined to avoid sub-component remount */}
+          <View style={[s.fsBottomBar, { paddingBottom: insets.bottom + 12, paddingHorizontal: insets.left + 14 }]}
+            pointerEvents="box-none">
+            <TouchableOpacity style={s.fsPlayBtn} onPress={togglePlay} disabled={audioLoading || !audioUrl}>
+              {audioLoading
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={s.playIcon}>{!audioUrl ? '🔇' : isPlaying ? '⏸' : '▶'}</Text>}
+            </TouchableOpacity>
+            <View style={s.trackWrap}>
+              {audioError ? <Text style={s.audioErrTxt} numberOfLines={1}>{audioError}</Text> : (
+                <>
+                  <View style={s.track}>
+                    <View style={[s.trackFill, { width: `${Math.min(progress * 100, 100)}%` as any }]} />
+                    <View style={[s.thumb, { left: `${Math.min(progress * 100, 98)}%` as any }]} />
+                  </View>
+                  <View style={s.seekStrip}>
+                    {[0, 0.2, 0.4, 0.6, 0.8, 1].map(p => (
+                      <TouchableOpacity key={p} style={s.seekZone}
+                        onPress={() => { seekTo(p); showFsControlsAndScheduleHide(); }} />
+                    ))}
+                  </View>
+                  <View style={s.timesRow}>
+                    <Text style={s.timeTxt}>{fmt(positionMs)}</Text>
+                    <Text style={s.timeTxt}>{fmt(durationMs)}</Text>
+                  </View>
+                </>
+              )}
             </View>
           </View>
-        )}
+        </View>
       </View>
     </Modal>
   );
 
-  // ── AI Coach FAB ───────────────────────────────────────────────────────────
-  const FAB = () => (
+  // ── AI Coach FAB (JSX variable — prevents remount flicker) ──────────────────
+  const fab = (
     <TouchableOpacity style={[s.fab, { bottom: insets.bottom + 72 }]}
       onPress={() => setShowChat(true)} activeOpacity={0.85}>
       <Text style={s.fabIcon}>🤖</Text>
     </TouchableOpacity>
   );
 
-  // ── Chatbot modal ──────────────────────────────────────────────────────────
-  const ChatModal = () => (
+  // ── Chatbot modal (JSX variable — prevents remount flicker) ──────────────────
+  const chatModal = (
     <Modal visible={showChat} animationType="slide" transparent onRequestClose={() => setShowChat(false)}>
       <KeyboardAvoidingView style={s.chatOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={[s.chatSheet, { paddingBottom: insets.bottom + 8 }]}>
@@ -656,8 +694,8 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
             </View>
           </View>
         </View>
-        <FullscreenPlayer />
-        <ChatModal />
+        {fsModal}
+        {chatModal}
       </View>
     );
   }
@@ -708,9 +746,9 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
               : <Text style={s.noTranscriptTxt}>No transcript for {locale.toUpperCase()}</Text>)}
       </ScrollView>
 
-      <FAB />
-      <FullscreenPlayer />
-      <ChatModal />
+      {fab}
+      {fsModal}
+      {chatModal}
     </View>
   );
 }
