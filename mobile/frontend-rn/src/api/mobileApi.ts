@@ -1,9 +1,13 @@
 import axios from 'axios'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Platform } from 'react-native'
 
-const api = axios.create({
-  baseURL: 'http://10.0.2.2:8081/api', // Android emulator -> localhost
-})
+// 10.0.2.2 is the special Android emulator loopback to host; web uses localhost directly
+const BASE_URL = Platform.OS === 'web'
+  ? 'http://localhost:8081/api'
+  : 'http://10.0.2.2:8081/api'
+
+const api = axios.create({ baseURL: BASE_URL })
 
 let currentUserId = 'learner-uid'
 

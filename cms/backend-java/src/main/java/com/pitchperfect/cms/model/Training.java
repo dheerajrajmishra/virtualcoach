@@ -53,9 +53,21 @@ public class Training {
     @Column(name = "created_by", length = 255)
     private String createdBy;
 
+    @Column(name = "processing_step", length = 100)
+    private String processingStep;
+
+    @Column(name = "processing_error", length = 2000)
+    private String processingError;
+
+    @Column(name = "data_excel_url", length = 1000)
+    private String dataExcelUrl;
+
     @Column(name = "created_at")
     private Instant createdAt;
 
     @Column(name = "updated_at")
     private Instant updatedAt;
+
+    @Column(name = "published_at")
+    private Instant publishedAt;
 }

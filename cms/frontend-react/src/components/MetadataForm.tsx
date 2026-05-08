@@ -1,4 +1,5 @@
 import { useTrainingStore } from '../store/useTrainingStore'
+import LanguageSelector from './LanguageSelector'
 
 const CATEGORIES = ['Product Training', 'Sales Process', 'Compliance', 'Onboarding', 'Skills']
 const PRODUCTS = ['Product A', 'Product B', 'Product C', 'Product D']
@@ -50,6 +51,8 @@ export default function MetadataForm() {
           </select>
         </div>
       </div>
+
+      <LanguageSelector />
     </div>
   )
 }

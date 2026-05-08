@@ -18,95 +18,107 @@ import java.util.Map;
 public class TranslationService {
 
     private static final MediaType JSON = MediaType.get("application/json");
-    private static final List<String> TRANSLATE_LOCALES = List.of("hi", "ta", "te", "mr", "bn");
-
-    private final OkHttpClient httpClient = new OkHttpClient();
+    private final OkHttpClient httpClient = new OkHttpClient.Builder()
+            .callTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+            .build();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${app.gemini.api-key}")
-    private String geminiApiKey;
+    @Value("${azure.openai.endpoint}")
+    private String endpoint;
 
-    @Value("${app.gemini.base-url}")
-    private String geminiBaseUrl;
+    @Value("${azure.openai.key}")
+    private String apiKey;
 
-    @Value("${app.gemini.model}")
-    private String geminiModel;
+    @Value("${azure.openai.deployment-name}")
+    private String deployment;
 
-    public List<Slide> fillMissingTranslations(List<Slide> slides) {
+    @Value("${azure.openai.api-version}")
+    private String apiVersion;
+
+    public List<Slide> fillMissingTranslations(List<Slide> slides, List<String> targetLocales) {
+        List<String> locales = nonEnglish(targetLocales);
         for (Slide slide : slides) {
             String sourceText = slide.getTranscripts().get("en");
             if (sourceText == null || sourceText.isBlank()) continue;
-
-            for (String locale : TRANSLATE_LOCALES) {
-                String existing = slide.getTranscripts().get(locale);
-                if (existing == null || existing.isBlank()) {
-                    String translated = translate(sourceText, locale);
-                    slide.getTranscripts().put(locale, translated);
+            for (String locale : locales) {
+                if (slide.getTranscripts().getOrDefault(locale, "").isBlank()) {
+                    slide.getTranscripts().put(locale, translate(sourceText, locale));
                 }
             }
         }
         return slides;
     }
 
-    public List<FAQ> fillFaqTranslations(List<FAQ> faqs) {
+    public List<FAQ> fillFaqTranslations(List<FAQ> faqs, List<String> targetLocales) {
+        List<String> locales = nonEnglish(targetLocales);
         for (FAQ faq : faqs) {
             String srcQ = faq.getQuestions().get("en");
             String srcA = faq.getAnswers().get("en");
-
-            for (String locale : TRANSLATE_LOCALES) {
-                if (faq.getQuestions().getOrDefault(locale, "").isBlank()) {
+            for (String locale : locales) {
+                if (faq.getQuestions().getOrDefault(locale, "").isBlank())
                     faq.getQuestions().put(locale, translate(srcQ, locale));
-                }
-                if (faq.getAnswers().getOrDefault(locale, "").isBlank()) {
+                if (faq.getAnswers().getOrDefault(locale, "").isBlank())
                     faq.getAnswers().put(locale, translate(srcA, locale));
-                }
             }
         }
         return faqs;
     }
 
-    public List<Quiz> fillQuizTranslations(List<Quiz> quizzes) {
+    public List<Quiz> fillQuizTranslations(List<Quiz> quizzes, List<String> targetLocales) {
+        List<String> locales = nonEnglish(targetLocales);
         for (Quiz quiz : quizzes) {
             String srcQ = quiz.getQuestions().get("en");
             String srcA = quiz.getExpectedAnswers().get("en");
-
-            for (String locale : TRANSLATE_LOCALES) {
-                if (quiz.getQuestions().getOrDefault(locale, "").isBlank()) {
+            for (String locale : locales) {
+                if (quiz.getQuestions().getOrDefault(locale, "").isBlank())
                     quiz.getQuestions().put(locale, translate(srcQ, locale));
-                }
-                if (quiz.getExpectedAnswers().getOrDefault(locale, "").isBlank()) {
+                if (quiz.getExpectedAnswers().getOrDefault(locale, "").isBlank())
                     quiz.getExpectedAnswers().put(locale, translate(srcA, locale));
-                }
             }
         }
         return quizzes;
     }
 
-    private String translate(String text, String targetLocale) {
-        String prompt = String.format(
-                "Translate the following text to %s. Return ONLY the translated text, no explanations:\n\n%s",
-                localeToLanguage(targetLocale), text
-        );
+    // English is the source — never translate into it
+    private List<String> nonEnglish(List<String> locales) {
+        return locales.stream().filter(l -> !"en".equalsIgnoreCase(l)).toList();
+    }
 
+    private String translate(String text, String targetLocale) {
+        if (text == null || text.isBlank()) return text;
+        String language = localeToLanguage(targetLocale);
         try {
-            String reqBody = objectMapper.writeValueAsString(Map.of(
-                    "contents", List.of(Map.of(
-                            "parts", List.of(Map.of("text", prompt))
-                    ))
+            String url = endpoint.replaceAll("/$", "")
+                    + "/openai/deployments/" + deployment
+                    + "/chat/completions?api-version=" + apiVersion;
+
+            String body = objectMapper.writeValueAsString(Map.of(
+                    "messages", List.of(
+                            Map.of("role", "system", "content",
+                                    "You are a professional translator for sales training content. "
+                                    + "Translate the user's text to " + language + ". "
+                                    + "Return ONLY the translated text with no extra commentary."),
+                            Map.of("role", "user", "content", text)
+                    ),
+                    "temperature", 0.1,
+                    "max_tokens", 2000
             ));
 
             Request request = new Request.Builder()
-                    .url(geminiBaseUrl + "/models/" + geminiModel + ":generateContent?key=" + geminiApiKey)
-                    .post(RequestBody.create(reqBody, JSON))
+                    .url(url)
+                    .addHeader("api-key", apiKey)
+                    .addHeader("Content-Type", "application/json")
+                    .post(RequestBody.create(body, JSON))
                     .build();
 
             try (Response response = httpClient.newCall(request).execute()) {
                 if (!response.isSuccessful() || response.body() == null) {
-                    log.warn("Gemini translation failed for locale {}", targetLocale);
+                    log.warn("Azure OpenAI translation failed for locale {} (HTTP {})", targetLocale, response.code());
                     return text;
                 }
                 JsonNode root = objectMapper.readTree(response.body().string());
-                return root.at("/candidates/0/content/parts/0/text").asText(text);
+                return root.at("/choices/0/message/content").asText(text).trim();
             }
         } catch (Exception e) {
             log.error("Translation error for locale {}: {}", targetLocale, e.getMessage());

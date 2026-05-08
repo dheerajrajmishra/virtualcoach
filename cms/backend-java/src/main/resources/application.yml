@@ -9,33 +9,40 @@ spring:
       max-file-size: 100MB
       max-request-size: 200MB
   datasource:
-    url: jdbc:sqlserver://localhost:1433;databaseName=virtualcoach;encrypt=true;trustServerCertificate=true
+    url: jdbc:sqlserver://127.0.0.1:1433;databaseName=virtualcoach;encrypt=true;trustServerCertificate=true
     username: appuser
     password: YourStrong@Passw0rd
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
   jpa:
+    database-platform: org.hibernate.dialect.SQLServerDialect
     hibernate:
       ddl-auto: update
     show-sql: false
 
 app:
+  storage:
+    type: ${APP_STORAGE_TYPE:local}
+    local-path: ${APP_STORAGE_PATH:./storage}
   gcs:
     bucket-name: ${GCS_BUCKET_NAME:pitch-perfect-assets}
     audio-prefix: audio/
     slides-prefix: slides/
-  gemini:
-    api-key: ${GEMINI_API_KEY:}
-    model: gemini-1.5-flash
-    base-url: https://generativelanguage.googleapis.com/v1beta
-  sarvam:
-    api-key: ${SARVAM_API_KEY:}
-  supported-locales:
-    - en
-    - hi
-    - ta
-    - te
-    - mr
-    - bn
+  supported-locales: en,hi,ta,te,mr,bn
+
+azure:
+  openai:
+    endpoint: ${AZURE_OPENAI_ENDPOINT:https://pitchperfectllmengine2.openai.azure.com/}
+    key: ${AZURE_OPENAI_KEY:YOUR_AZURE_OPENAI_KEY}
+    deployment-name: ${AZURE_OPENAI_DEPLOYMENT:gpt-4o}
+    api-version: 2024-02-15-preview
+
+elevenlabs:
+  api-key: ${ELEVENLABS_API_KEY:YOUR_ELEVENLABS_API_KEY}
+  model: eleven_multilingual_v2
+  # Default voice used for all locales
+  default-voice-id: ${ELEVENLABS_VOICE_ID:pNInz6obpgDQGcFmaJgB}
+  stability: 0.5
+  similarity-boost: 0.75
 
 management:
   endpoints:

@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -29,17 +30,25 @@ public class EvaluationService {
     private final QuizRepository quizRepository;
     private final EvaluationResultRepository evaluationResultRepository;
     private final LearnerProgressRepository learnerProgressRepository;
-    private final OkHttpClient httpClient = new OkHttpClient();
+    private final AzureSpeechService azureSpeechService;
+
+    private final OkHttpClient httpClient = new OkHttpClient.Builder()
+            .callTimeout(90, TimeUnit.SECONDS)
+            .readTimeout(90, TimeUnit.SECONDS)
+            .build();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${app.gemini.api-key}")
-    private String geminiApiKey;
+    @Value("${azure.openai.endpoint}")
+    private String endpoint;
 
-    @Value("${app.gemini.base-url}")
-    private String geminiBaseUrl;
+    @Value("${azure.openai.key}")
+    private String apiKey;
 
-    @Value("${app.gemini.model}")
-    private String geminiModel;
+    @Value("${azure.openai.deployment-name}")
+    private String deployment;
+
+    @Value("${azure.openai.api-version}")
+    private String apiVersion;
 
     @Async
     public EvaluationResult evaluate(QuizSubmission submission) {
@@ -51,10 +60,13 @@ public class EvaluationService {
             String rubric = getLocalizedOrDefault(quiz.getRubrics(), submission.getLocale());
             int maxScore = quiz.getMaxScore() > 0 ? quiz.getMaxScore() : 10;
 
-            String geminiPrompt = buildEvaluationPrompt(submission, expectedAnswer, rubric, maxScore);
-            String geminiResponse = callGemini(geminiPrompt, submission);
+            // For audio/video submissions, transcribe with Azure Speech STT first
+            String responseText = resolveResponseText(submission);
 
-            EvaluationResult result = parseEvaluationResponse(geminiResponse, submission, maxScore);
+            String prompt = buildEvaluationPrompt(responseText, expectedAnswer, rubric, maxScore);
+            String llmResponse = callAzureOpenAI(prompt);
+
+            EvaluationResult result = parseEvaluationResponse(llmResponse, submission, maxScore);
             persistResult(result, submission.getTrainingId());
             return result;
         } catch (Exception e) {
@@ -72,19 +84,34 @@ public class EvaluationService {
         }
     }
 
-    private String buildEvaluationPrompt(QuizSubmission submission, String expectedAnswer,
-                                          String rubric, int maxScore) {
-        String userResponseSection = switch (submission.getInputType()) {
-            case "text" -> "User's Text Response:\n" + submission.getTextResponse();
-            case "audio" -> "User submitted an audio recording. GCS URL: " + submission.getMediaGcsUrl() +
-                    "\nTranscribe and evaluate the spoken response.";
-            case "video" -> "User submitted a video recording. GCS URL: " + submission.getMediaGcsUrl() +
-                    "\nAnalyze both verbal content and presentation in the video.";
-            default -> "User Response: " + submission.getTextResponse();
+    /**
+     * Returns a plain-text version of the learner's response.
+     * Audio and video inputs are first transcribed via Azure Speech STT.
+     */
+    private String resolveResponseText(QuizSubmission submission) {
+        return switch (submission.getInputType()) {
+            case "audio", "video" -> {
+                if (submission.getMediaGcsUrl() != null && !submission.getMediaGcsUrl().isBlank()) {
+                    log.info("Transcribing {} submission {} via Azure Speech",
+                            submission.getInputType(), submission.getId());
+                    String transcript = azureSpeechService.transcribe(
+                            submission.getMediaGcsUrl(), submission.getLocale());
+                    if (transcript.isBlank()) {
+                        log.warn("Transcription returned empty for submission {}; proceeding with empty response",
+                                submission.getId());
+                    }
+                    yield transcript;
+                }
+                yield "";
+            }
+            default -> submission.getTextResponse() != null ? submission.getTextResponse() : "";
         };
+    }
 
+    private String buildEvaluationPrompt(String responseText, String expectedAnswer,
+                                          String rubric, int maxScore) {
         return String.format("""
-                You are an expert sales training evaluator. Evaluate the learner's response.
+                You are an expert sales training evaluator. Evaluate the learner's response below.
 
                 Expected Answer: %s
 
@@ -92,6 +119,7 @@ public class EvaluationService {
 
                 Max Score: %d
 
+                Learner's Response:
                 %s
 
                 Respond ONLY with valid JSON in this exact format:
@@ -101,48 +129,47 @@ public class EvaluationService {
                   "strengths": "<what the learner did well>",
                   "improvements": "<specific areas to improve>"
                 }
-                """, expectedAnswer, rubric, maxScore, userResponseSection, maxScore);
+                """, expectedAnswer, rubric, maxScore,
+                responseText.isBlank() ? "(no response provided)" : responseText,
+                maxScore);
     }
 
-    private String callGemini(String prompt, QuizSubmission submission) throws Exception {
-        Object contentsPayload;
+    private String callAzureOpenAI(String prompt) throws Exception {
+        String url = endpoint.replaceAll("/$", "")
+                + "/openai/deployments/" + deployment
+                + "/chat/completions?api-version=" + apiVersion;
 
-        if ("text".equals(submission.getInputType())) {
-            contentsPayload = List.of(Map.of(
-                    "parts", List.of(Map.of("text", prompt))
-            ));
-        } else {
-            contentsPayload = List.of(Map.of(
-                    "parts", List.of(
-                            Map.of("text", prompt),
-                            Map.of("fileData", Map.of(
-                                    "mimeType", "audio".equals(submission.getInputType()) ? "audio/mpeg" : "video/mp4",
-                                    "fileUri", submission.getMediaGcsUrl()
-                            ))
-                    )
-            ));
-        }
-
-        String reqBody = objectMapper.writeValueAsString(Map.of("contents", contentsPayload));
+        String body = objectMapper.writeValueAsString(Map.of(
+                "messages", List.of(
+                        Map.of("role", "system", "content",
+                                "You are an expert sales training evaluator. Respond only with valid JSON."),
+                        Map.of("role", "user", "content", prompt)
+                ),
+                "temperature", 0.2,
+                "max_tokens", 800,
+                "response_format", Map.of("type", "json_object")
+        ));
 
         Request request = new Request.Builder()
-                .url(geminiBaseUrl + "/models/" + geminiModel + ":generateContent?key=" + geminiApiKey)
-                .post(RequestBody.create(reqBody, JSON))
+                .url(url)
+                .addHeader("api-key", apiKey)
+                .addHeader("Content-Type", "application/json")
+                .post(RequestBody.create(body, JSON))
                 .build();
 
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful() || response.body() == null) {
-                throw new RuntimeException("Gemini API error: " + response.code());
+                throw new RuntimeException("Azure OpenAI evaluation error: HTTP " + response.code());
             }
             JsonNode root = objectMapper.readTree(response.body().string());
-            return root.at("/candidates/0/content/parts/0/text").asText();
+            return root.at("/choices/0/message/content").asText();
         }
     }
 
     private EvaluationResult parseEvaluationResponse(String json, QuizSubmission submission, int maxScore)
             throws Exception {
         JsonNode node = objectMapper.readTree(json.trim().replaceAll("```json|```", "").trim());
-        int score = Math.min(node.get("score").asInt(), maxScore);
+        int score = Math.min(node.path("score").asInt(0), maxScore);
 
         return EvaluationResult.builder()
                 .submissionId(submission.getId())
@@ -152,16 +179,15 @@ public class EvaluationService {
                 .score(score)
                 .maxScore(maxScore)
                 .scorePercent((double) score / maxScore * 100)
-                .feedback(node.get("feedback").asText())
-                .strengths(node.get("strengths").asText())
-                .improvements(node.get("improvements").asText())
+                .feedback(node.path("feedback").asText())
+                .strengths(node.path("strengths").asText())
+                .improvements(node.path("improvements").asText())
                 .evaluatedAt(Instant.now())
                 .build();
     }
 
     private void persistResult(EvaluationResult result, String trainingId) {
         evaluationResultRepository.save(result);
-
         String progressId = result.getUserId() + "_" + trainingId;
         learnerProgressRepository.findById(progressId).ifPresent(p -> {
             p.getQuizScores().put(result.getQuizId(), result.getScore());

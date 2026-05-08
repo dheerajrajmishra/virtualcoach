@@ -4,7 +4,7 @@ import { UploadCloud, FileCheck, X } from 'lucide-react'
 import { useTrainingStore, TrainingDraft } from '../store/useTrainingStore'
 
 interface Props {
-  field: keyof Pick<TrainingDraft, 'deck' | 'transcriptsExcel' | 'faqsExcel' | 'quizzesExcel'>
+  field: keyof Pick<TrainingDraft, 'deck' | 'dataExcel'>
   label: string
   accept: Record<string, string[]>
   hint: string

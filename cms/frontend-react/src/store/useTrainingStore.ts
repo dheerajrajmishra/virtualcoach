@@ -1,13 +1,15 @@
 import { create } from 'zustand'
 
+export const ALL_LOCALES = ['en', 'hi', 'ta', 'te', 'mr', 'bn'] as const
+export type Locale = typeof ALL_LOCALES[number]
+
 export interface TrainingDraft {
   name: string
   category: string
   product: string
+  locales: string[]
   deck: File | null
-  transcriptsExcel: File | null
-  faqsExcel: File | null
-  quizzesExcel: File | null
+  dataExcel: File | null
 }
 
 interface TrainingStore {
@@ -20,10 +22,9 @@ const initialDraft: TrainingDraft = {
   name: '',
   category: '',
   product: '',
+  locales: [...ALL_LOCALES],   // all selected by default
   deck: null,
-  transcriptsExcel: null,
-  faqsExcel: null,
-  quizzesExcel: null,
+  dataExcel: null,
 }
 
 export const useTrainingStore = create<TrainingStore>((set) => ({

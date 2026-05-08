@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface SlideRepository extends JpaRepository<Slide, String> {
     List<Slide> findByTrainingIdOrderBySlideIndex(String trainingId);
+    void deleteByTrainingId(String trainingId);
 }

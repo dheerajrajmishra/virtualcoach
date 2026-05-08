@@ -12,6 +12,10 @@ dist/
 .expo/
 node_modules/
 
+# Local Storage (Local Ingestion)
+storage/
+cms/backend-java/storage/
+
 # IDE
 .idea/
 .vscode/
@@ -24,3 +28,5 @@ Thumbs.db
 # Env
 .env
 .env.local
+.env.development
+.env.production

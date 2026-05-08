@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface QuizRepository extends JpaRepository<Quiz, String> {
     List<Quiz> findByTrainingId(String trainingId);
+    void deleteByTrainingId(String trainingId);
 }
