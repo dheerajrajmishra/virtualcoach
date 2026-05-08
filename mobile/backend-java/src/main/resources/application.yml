@@ -1,0 +1,41 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: mobile-backend
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 100MB
+  datasource:
+    url: jdbc:sqlserver://localhost:1433;databaseName=virtualcoach;encrypt=true;trustServerCertificate=true
+    username: appuser
+    password: YourStrong@Passw0rd
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+app:
+  gcs:
+    bucket-name: ${GCS_BUCKET_NAME:pitch-perfect-assets}
+    audio-prefix: audio/
+  gemini:
+    api-key: ${GEMINI_API_KEY:}
+    model: gemini-1.5-pro
+    base-url: https://generativelanguage.googleapis.com/v1beta
+  rag:
+    max-context-faqs: 5
+    similarity-threshold: 0.75
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+logging:
+  level:
+    com.pitchperfect: DEBUG

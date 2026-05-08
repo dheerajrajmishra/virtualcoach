@@ -1,0 +1,26 @@
+# Secrets — never commit
+secrets/
+*.json
+!package.json
+!app.json
+!tsconfig*.json
+
+# Build outputs
+target/
+build/
+dist/
+.expo/
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local

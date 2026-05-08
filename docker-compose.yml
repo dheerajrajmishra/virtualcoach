@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  cms-backend:
+    build: ./cms/backend-java
+    container_name: pp-cms-backend
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      GOOGLE_APPLICATION_CREDENTIALS: /app/secrets/service-account.json
+      GCS_BUCKET_NAME: ${GCS_BUCKET_NAME}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      SARVAM_API_KEY: ${SARVAM_API_KEY}
+    volumes:
+      - ./secrets:/app/secrets:ro
+    networks:
+      - pitch-perfect-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  mobile-backend:
+    build: ./mobile/backend-java
+    container_name: pp-mobile-backend
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      GOOGLE_APPLICATION_CREDENTIALS: /app/secrets/service-account.json
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    volumes:
+      - ./secrets:/app/secrets:ro
+    networks:
+      - pitch-perfect-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  pitch-perfect-net:
+    driver: bridge
