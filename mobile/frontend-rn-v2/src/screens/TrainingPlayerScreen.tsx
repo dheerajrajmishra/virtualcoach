@@ -3,6 +3,7 @@ import {
   View, Text, Image, TouchableOpacity, ScrollView, StyleSheet,
   ActivityIndicator, LayoutAnimation, Platform, UIManager,
   useWindowDimensions, Modal, TextInput, KeyboardAvoidingView,
+  PanResponder, StatusBar,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio, AVPlaybackStatus } from 'expo-av';
@@ -13,6 +14,37 @@ if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.
 function fmt(ms: number) {
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+// Four-corner expand icon (renders cleanly on all devices)
+function ExpandIcon({ size, color }: { size: number; color: string }) {
+  const arm = Math.round(size * 0.42);
+  const t = 2;
+  const c = { position: 'absolute' as const, width: arm, height: arm, borderColor: color };
+  return (
+    <View style={{ width: size, height: size }}>
+      <View style={[c, { top: 0, left: 0, borderTopWidth: t, borderLeftWidth: t }]} />
+      <View style={[c, { top: 0, right: 0, borderTopWidth: t, borderRightWidth: t }]} />
+      <View style={[c, { bottom: 0, left: 0, borderBottomWidth: t, borderLeftWidth: t }]} />
+      <View style={[c, { bottom: 0, right: 0, borderBottomWidth: t, borderRightWidth: t }]} />
+    </View>
+  );
+}
+
+// Four-corner compress icon (for "exit fullscreen")
+function CompressIcon({ size, color }: { size: number; color: string }) {
+  const arm = Math.round(size * 0.38);
+  const t = 2;
+  const off = Math.round(size * 0.28);
+  const c = { position: 'absolute' as const, width: arm, height: arm, borderColor: color };
+  return (
+    <View style={{ width: size, height: size }}>
+      <View style={[c, { top: off, left: off, borderTopWidth: t, borderLeftWidth: t }]} />
+      <View style={[c, { top: off, right: off, borderTopWidth: t, borderRightWidth: t }]} />
+      <View style={[c, { bottom: off, left: off, borderBottomWidth: t, borderLeftWidth: t }]} />
+      <View style={[c, { bottom: off, right: off, borderBottomWidth: t, borderRightWidth: t }]} />
+    </View>
+  );
 }
 
 interface ChatMessage { id: string; role: 'user' | 'assistant'; text: string }
@@ -47,7 +79,17 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   const autoAdvanceTimer                    = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => { autoPlayRef.current = autoPlay; }, [autoPlay]);
 
-  // ── Inline transcript toggle (portrait bottom section) ────────────────────
+  // ── Fullscreen ─────────────────────────────────────────────────────────────
+  const [isFullscreen, setIsFullscreen]       = useState(false);
+  const [showFsControls, setShowFsControls]   = useState(true);
+  const fsControlsTimer                       = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Refs so PanResponder (created once) always reads latest values
+  const currentIndexRef                       = useRef(0);
+  const slidesLenRef                          = useRef(0);
+  useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
+  useEffect(() => { slidesLenRef.current = slides.length; }, [slides.length]);
+
+  // ── Inline transcript toggle ───────────────────────────────────────────────
   const [showBottomTranscript, setShowBottomTranscript] = useState(false);
 
   // ── Chat ───────────────────────────────────────────────────────────────────
@@ -110,9 +152,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
                     setAutoAdvanceSec(null);
                     setShowTranscript(false);
                     setCurrentIndex(currentIndex + 1);
-                  } else {
-                    setAutoAdvanceSec(count);
-                  }
+                  } else { setAutoAdvanceSec(count); }
                 }, 1000);
               }
             }
@@ -126,7 +166,6 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
         if (!cancelled) setAudioLoading(false);
       }
     }
-
     setup();
     return () => {
       cancelled = true;
@@ -136,14 +175,55 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     };
   }, [currentIndex, locale, slides]);
 
+  // Cleanup timers on unmount
   useEffect(() => () => {
     if (autoAdvanceTimer.current) clearInterval(autoAdvanceTimer.current);
+    if (fsControlsTimer.current) clearTimeout(fsControlsTimer.current);
   }, []);
+
+  // ── Fullscreen pan responder ───────────────────────────────────────────────
+  // onStartShouldSetPanResponder: false  → taps fall through to TouchableOpacity
+  // onMoveShouldSetPanResponder: true    → steals horizontal swipes from TouchableOpacity
+  const fsPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, g) =>
+        Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderRelease: (_, g) => {
+        const fastSwipe = Math.abs(g.vx) > 0.4;
+        const bigSwipe  = Math.abs(g.dx) > 55;
+        if (g.dx > 0 && (fastSwipe || bigSwipe)) {
+          // swipe right → previous
+          if (autoAdvanceTimer.current) { clearInterval(autoAdvanceTimer.current); autoAdvanceTimer.current = null; }
+          setAutoAdvanceSec(null);
+          setShowTranscript(false);
+          setCurrentIndex(prev => Math.max(0, prev - 1));
+        } else if (g.dx < 0 && (fastSwipe || bigSwipe)) {
+          // swipe left → next
+          if (autoAdvanceTimer.current) { clearInterval(autoAdvanceTimer.current); autoAdvanceTimer.current = null; }
+          setAutoAdvanceSec(null);
+          setShowTranscript(false);
+          setCurrentIndex(prev => Math.min(slidesLenRef.current - 1, prev + 1));
+        }
+      },
+    })
+  ).current;
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   function cancelAutoAdvance() {
     if (autoAdvanceTimer.current) { clearInterval(autoAdvanceTimer.current); autoAdvanceTimer.current = null; }
     setAutoAdvanceSec(null);
+  }
+
+  function showFsControlsAndScheduleHide() {
+    setShowFsControls(true);
+    if (fsControlsTimer.current) clearTimeout(fsControlsTimer.current);
+    fsControlsTimer.current = setTimeout(() => setShowFsControls(false), 3000);
+  }
+
+  function enterFullscreen() {
+    setIsFullscreen(true);
+    showFsControlsAndScheduleHide();
   }
 
   async function togglePlay() {
@@ -206,34 +286,45 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     </View>
   );
 
-  // ── Shared sub-components ──────────────────────────────────────────────────
+  // ── Sub-components ─────────────────────────────────────────────────────────
 
-  const AudioBar = () => (
+  // Reusable audio track (used in both normal and fullscreen)
+  const AudioTrack = ({ onInteract }: { onInteract?: () => void }) => (
+    <View style={s.trackWrap}>
+      {audioError ? <Text style={s.audioErrTxt} numberOfLines={1}>{audioError}</Text> : (
+        <>
+          <View style={s.track}>
+            <View style={[s.trackFill, { width: `${Math.min(progress * 100, 100)}%` as any }]} />
+            <View style={[s.thumb, { left: `${Math.min(progress * 100, 98)}%` as any }]} />
+          </View>
+          <View style={s.seekStrip}>
+            {[0, 0.2, 0.4, 0.6, 0.8, 1].map(p => (
+              <TouchableOpacity key={p} style={s.seekZone}
+                onPress={() => { seekTo(p); onInteract?.(); }} />
+            ))}
+          </View>
+          <View style={s.timesRow}>
+            <Text style={s.timeTxt}>{fmt(positionMs)}</Text>
+            <Text style={s.timeTxt}>{fmt(durationMs)}</Text>
+          </View>
+        </>
+      )}
+    </View>
+  );
+
+  const AudioBar = ({ onFullscreen }: { onFullscreen?: () => void }) => (
     <View style={s.audioBarOverlay}>
       <TouchableOpacity style={s.playBtn} onPress={togglePlay} disabled={audioLoading || !audioUrl}>
         {audioLoading
           ? <ActivityIndicator color="#fff" size="small" />
           : <Text style={s.playIcon}>{!audioUrl ? '🔇' : isPlaying ? '⏸' : '▶'}</Text>}
       </TouchableOpacity>
-      <View style={s.trackWrap}>
-        {audioError ? <Text style={s.audioErrTxt} numberOfLines={1}>{audioError}</Text> : (
-          <>
-            <View style={s.track}>
-              <View style={[s.trackFill, { width: `${Math.min(progress * 100, 100)}%` as any }]} />
-              <View style={[s.thumb, { left: `${Math.min(progress * 100, 98)}%` as any }]} />
-            </View>
-            <View style={s.seekStrip}>
-              {[0, 0.2, 0.4, 0.6, 0.8, 1].map(p => (
-                <TouchableOpacity key={p} style={s.seekZone} onPress={() => seekTo(p)} />
-              ))}
-            </View>
-            <View style={s.timesRow}>
-              <Text style={s.timeTxt}>{fmt(positionMs)}</Text>
-              <Text style={s.timeTxt}>{fmt(durationMs)}</Text>
-            </View>
-          </>
-        )}
-      </View>
+      <AudioTrack />
+      {onFullscreen && (
+        <TouchableOpacity style={s.fsToggleBtn} onPress={onFullscreen} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <ExpandIcon size={18} color="#fff" />
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -260,7 +351,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
           </Text>
         </ScrollView>
       )}
-      <AudioBar />
+      <AudioBar onFullscreen={enterFullscreen} />
     </View>
   );
 
@@ -284,7 +375,6 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     </View>
   );
 
-  // Shared progress + chips used in both layouts
   const ProgressChips = () => (
     <>
       <View style={s.progressRow}>
@@ -316,7 +406,6 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     </View>
   );
 
-  // Header: shared, compact variant for landscape
   const Header = ({ compact = false }) => (
     <View style={[
       s.header,
@@ -327,13 +416,10 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
         <Text style={s.backArrow}>←</Text>
       </TouchableOpacity>
       <Text style={s.headerTitle} numberOfLines={1}>{training.name}</Text>
-      {/* Locale pills — fixed width to prevent overflow */}
       <View style={s.localePillsWrap}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.localePillsContent}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.localePillsContent}>
           {(training.supportedLocales ?? []).map(l => (
-            <TouchableOpacity key={l} style={[s.lPill, locale === l && s.lPillActive]}
-              onPress={() => setLocale(l)}>
+            <TouchableOpacity key={l} style={[s.lPill, locale === l && s.lPillActive]} onPress={() => setLocale(l)}>
               <Text style={[s.lPillTxt, locale === l && s.lPillTxtActive]}>{l.toUpperCase()}</Text>
             </TouchableOpacity>
           ))}
@@ -347,7 +433,105 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     </View>
   );
 
-  // ── AI Coach FAB (portrait only) ───────────────────────────────────────────
+  // ── FULLSCREEN PLAYER ──────────────────────────────────────────────────────
+  const FullscreenPlayer = () => (
+    <Modal
+      visible={isFullscreen}
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={() => setIsFullscreen(false)}>
+
+      <StatusBar hidden backgroundColor="transparent" translucent />
+
+      {/* Root captures swipe gestures (only horizontal moves, not taps) */}
+      <View style={s.fsRoot} {...fsPanResponder.panHandlers}>
+
+        {/* Black background */}
+        <View style={[StyleSheet.absoluteFill, s.fsBg]} />
+
+        {/* Slide image */}
+        {imageUrl && !imageError ? (
+          <Image source={{ uri: imageUrl }} style={[StyleSheet.absoluteFill, s.fsImg]}
+            resizeMode="contain" onError={() => setImageError(true)} />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, s.imgFallback]}>
+            <Text style={s.imgFallbackIcon}>🖼</Text>
+            <Text style={[s.imgFallbackTxt, { color: '#9ca3af' }]}>
+              {imageError ? 'Could not load image' : 'No image'}
+            </Text>
+          </View>
+        )}
+
+        {/* Full-area tap target — play/pause + show controls */}
+        <TouchableOpacity
+          style={StyleSheet.absoluteFill}
+          activeOpacity={1}
+          onPress={() => { togglePlay(); showFsControlsAndScheduleHide(); }}>
+
+          {/* Center play/pause flash — shown briefly */}
+          {showFsControls && (
+            <View style={s.fsCenterIndicator} pointerEvents="none">
+              <View style={s.fsCenterCircle}>
+                {audioLoading
+                  ? <ActivityIndicator color="#fff" size="large" />
+                  : <Text style={s.fsCenterIcon}>{!audioUrl ? '🔇' : isPlaying ? '⏸' : '▶'}</Text>}
+              </View>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Controls overlay — box-none so empty areas pass taps to TouchableOpacity above */}
+        {showFsControls && (
+          <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+
+            {/* Top bar: counter + title + exit */}
+            <View style={[s.fsTopBar, { paddingTop: insets.top + 10, paddingHorizontal: insets.left + 16 }]}
+              pointerEvents="box-none">
+              <View style={s.fsCounterBadge}>
+                <Text style={s.fsCounterTxt}>{currentIndex + 1} / {slides.length}</Text>
+              </View>
+              <Text style={s.fsTitleTxt} numberOfLines={1}>{slide?.title ?? training.name}</Text>
+              <TouchableOpacity style={s.fsExitBtn} onPress={() => setIsFullscreen(false)}>
+                <CompressIcon size={18} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Left / Right swipe arrow hints */}
+            {currentIndex > 0 && (
+              <View style={s.fsPrevHint} pointerEvents="none">
+                <Text style={s.fsNavArrow}>‹</Text>
+              </View>
+            )}
+            {currentIndex < slides.length - 1 && (
+              <View style={s.fsNextHint} pointerEvents="none">
+                <Text style={s.fsNavArrow}>›</Text>
+              </View>
+            )}
+
+            {/* Slide dot indicator */}
+            <View style={s.fsDotsRow} pointerEvents="none">
+              {slides.map((_, i) => (
+                <View key={i} style={[s.fsDot, i === currentIndex && s.fsDotActive]} />
+              ))}
+            </View>
+
+            {/* Bottom audio controls */}
+            <View style={[s.fsBottomBar, { paddingBottom: insets.bottom + 12, paddingHorizontal: insets.left + 14 }]}
+              pointerEvents="box-none">
+              <TouchableOpacity style={s.fsPlayBtn} onPress={togglePlay} disabled={audioLoading || !audioUrl}>
+                {audioLoading
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={s.playIcon}>{!audioUrl ? '🔇' : isPlaying ? '⏸' : '▶'}</Text>}
+              </TouchableOpacity>
+              <AudioTrack onInteract={showFsControlsAndScheduleHide} />
+            </View>
+          </View>
+        )}
+      </View>
+    </Modal>
+  );
+
+  // ── AI Coach FAB ───────────────────────────────────────────────────────────
   const FAB = () => (
     <TouchableOpacity style={[s.fab, { bottom: insets.bottom + 72 }]}
       onPress={() => setShowChat(true)} activeOpacity={0.85}>
@@ -394,10 +578,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
             {chatLoading && (
               <View style={[s.msgBubble, s.msgBot]}>
                 <Text style={s.msgBotLabel}>AI COACH</Text>
-                <View style={s.typingRow}>
-                  <ActivityIndicator size="small" color="#6366f1" />
-                  <Text style={s.typingTxt}>Thinking…</Text>
-                </View>
+                <View style={s.typingRow}><ActivityIndicator size="small" color="#6366f1" /><Text style={s.typingTxt}>Thinking…</Text></View>
               </View>
             )}
           </ScrollView>
@@ -405,8 +586,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
             <View style={s.chatInputRow}>
               <TextInput style={s.chatInput} value={chatInput} onChangeText={setChatInput}
                 placeholder="Ask about this training…" placeholderTextColor="#6b7280"
-                multiline maxLength={500} returnKeyType="send" blurOnSubmit
-                onSubmitEditing={sendChatMessage} />
+                multiline maxLength={500} returnKeyType="send" blurOnSubmit onSubmitEditing={sendChatMessage} />
               <TouchableOpacity style={[s.sendBtn, !chatInput.trim() && s.sendBtnOff]}
                 onPress={sendChatMessage} disabled={!chatInput.trim() || chatLoading}>
                 <Text style={s.sendBtnTxt}>➤</Text>
@@ -417,9 +597,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
               <TouchableOpacity style={s.bigActionBtn}>
                 <Text style={s.bigActionIcon}>{chatMode === 'voice' ? '🎤' : '📹'}</Text>
               </TouchableOpacity>
-              <Text style={s.altInputHint}>
-                {chatMode === 'voice' ? 'Tap to ask by voice' : 'Tap to ask by video'}
-              </Text>
+              <Text style={s.altInputHint}>{chatMode === 'voice' ? 'Tap to ask by voice' : 'Tap to ask by video'}</Text>
             </View>
           )}
         </View>
@@ -432,25 +610,17 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   // ══════════════════════════════════════════════════════════════════════════
   if (isLandscape) {
     const imgH = H - insets.top - insets.bottom;
-
     return (
       <View style={s.root}>
         <Header compact />
         <View style={s.landscapeBody}>
-
-          {/* ── Left: slide image ── */}
           <SlideImage height={imgH} />
-
-          {/* ── Right: metadata + transcript + nav ── */}
           <View style={[s.rightPanel, { paddingRight: insets.right + 10 }]}>
-
-            {/* Fixed top block */}
             <View style={s.rightTop}>
               <View style={s.rightTitleRow}>
                 {slide?.title
                   ? <Text style={s.slideTitleLandscape} numberOfLines={2}>{slide.title}</Text>
                   : <View style={{ flex: 1 }} />}
-                {/* AI Coach button inline */}
                 <TouchableOpacity style={s.aiBtn} onPress={() => setShowChat(true)}>
                   <Text style={s.aiBtnIcon}>🤖</Text>
                   <Text style={s.aiBtnTxt}>Ask AI</Text>
@@ -459,21 +629,14 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
               <ProgressChips />
               <AutoPlayRow compact />
             </View>
-
             <View style={s.rightDivider} />
-
-            {/* Scrollable transcript fills remaining space */}
             <ScrollView style={s.transcriptPanel} showsVerticalScrollIndicator={false}
               contentContainerStyle={s.transcriptPanelContent}>
               <Text style={s.transcriptPanelLabel}>TRANSCRIPT</Text>
-              {transcript ? (
-                <Text style={s.transcriptPanelTxt}>{transcript}</Text>
-              ) : (
-                <Text style={s.transcriptPanelEmpty}>No transcript for {locale.toUpperCase()}</Text>
-              )}
+              {transcript
+                ? <Text style={s.transcriptPanelTxt}>{transcript}</Text>
+                : <Text style={s.transcriptPanelEmpty}>No transcript for {locale.toUpperCase()}</Text>}
             </ScrollView>
-
-            {/* Nav bar pinned to bottom */}
             <View style={[s.navBarLandscape, { paddingBottom: insets.bottom + 4 }]}>
               <TouchableOpacity style={[s.navBtn, currentIndex === 0 && s.navBtnOff]}
                 onPress={() => goTo(currentIndex - 1)} disabled={currentIndex === 0}>
@@ -493,6 +656,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
             </View>
           </View>
         </View>
+        <FullscreenPlayer />
         <ChatModal />
       </View>
     );
@@ -505,23 +669,16 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     <View style={s.root}>
       <Header />
       <SlideImage height={Math.round(H * 0.45)} />
-
-      {/* Info strip: title + progress + chips */}
       <View style={s.infoPanel}>
         {slide?.title ? <Text style={s.slideTitle} numberOfLines={2}>{slide.title}</Text> : null}
         <ProgressChips />
       </View>
-
-      {/* Nav bar */}
       <NavBar />
 
-      {/* Bottom section — fills dead space, scrollable ─────────────────────── */}
-      <ScrollView
-        style={s.bottomSection}
+      {/* Bottom section — fills dead space, scrollable */}
+      <ScrollView style={s.bottomSection}
         contentContainerStyle={[s.bottomContent, { paddingBottom: insets.bottom + 12 }]}
         showsVerticalScrollIndicator={false}>
-
-        {/* Auto-advance countdown banner */}
         {autoAdvanceSec !== null && (
           <TouchableOpacity style={s.countdownBanner} onPress={cancelAutoAdvance} activeOpacity={0.85}>
             <View style={s.countdownBar}>
@@ -533,13 +690,8 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
             </View>
           </TouchableOpacity>
         )}
-
-        {/* Auto-play toggle */}
         <AutoPlayRow />
-
         <View style={s.bottomDivider} />
-
-        {/* Transcript — collapsible */}
         <TouchableOpacity style={s.transcriptToggleRow}
           onPress={() => setShowBottomTranscript(o => !o)} activeOpacity={0.7}>
           <Text style={s.transcriptSectionLabel}>TRANSCRIPT</Text>
@@ -547,20 +699,17 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
             <Text style={s.transcriptTogglePillTxt}>{showBottomTranscript ? 'Hide ▲' : 'Show ▼'}</Text>
           </View>
         </TouchableOpacity>
-
-        {showBottomTranscript ? (
-          transcript
-            ? <Text style={s.transcriptFullTxt}>{transcript}</Text>
-            : <Text style={s.noTranscriptTxt}>No transcript for {locale.toUpperCase()}</Text>
-        ) : (
-          transcript
-            ? <Text style={s.transcriptPreviewTxt} numberOfLines={2}>{transcript}</Text>
-            : <Text style={s.noTranscriptTxt}>No transcript for {locale.toUpperCase()}</Text>
-        )}
+        {showBottomTranscript
+          ? (transcript
+              ? <Text style={s.transcriptFullTxt}>{transcript}</Text>
+              : <Text style={s.noTranscriptTxt}>No transcript for {locale.toUpperCase()}</Text>)
+          : (transcript
+              ? <Text style={s.transcriptPreviewTxt} numberOfLines={2}>{transcript}</Text>
+              : <Text style={s.noTranscriptTxt}>No transcript for {locale.toUpperCase()}</Text>)}
       </ScrollView>
 
-      {/* Floating AI Coach button */}
       <FAB />
+      <FullscreenPlayer />
       <ChatModal />
     </View>
   );
@@ -578,27 +727,22 @@ const s = StyleSheet.create({
 
   // ── Header ───────────────────────────────────────────────────────────────────
   header: {
-    backgroundColor: '#4f46e5',
-    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#4f46e5', flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 14, paddingBottom: 10, gap: 8,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 6,
   },
-  headerCompact: { paddingBottom: 8 },
-  backArrow:     { fontSize: 24, color: '#fff', lineHeight: 28 },
-  headerTitle:   { fontSize: 14, fontWeight: '700', color: '#fff', flex: 1 },
-  // Locale pills — wrapped in a fixed-width View to prevent overflow
-  localePillsWrap:    { flexShrink: 1, maxWidth: 130 },
-  localePillsContent: { flexDirection: 'row', gap: 4 },
-  lPill:              {
-    paddingHorizontal: 8, height: 26, justifyContent: 'center',
-    borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  lPillActive:        { backgroundColor: '#fff' },
-  lPillTxt:           { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.9)' },
-  lPillTxtActive:     { color: '#6366f1' },
-  transcriptIconBtn:  { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.15)' },
+  headerCompact:        { paddingBottom: 8 },
+  backArrow:            { fontSize: 24, color: '#fff', lineHeight: 28 },
+  headerTitle:          { fontSize: 14, fontWeight: '700', color: '#fff', flex: 1 },
+  localePillsWrap:      { flexShrink: 1, maxWidth: 130 },
+  localePillsContent:   { flexDirection: 'row', gap: 4 },
+  lPill:                { paddingHorizontal: 8, height: 26, justifyContent: 'center', borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.2)' },
+  lPillActive:          { backgroundColor: '#fff' },
+  lPillTxt:             { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.9)' },
+  lPillTxtActive:       { color: '#6366f1' },
+  transcriptIconBtn:    { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.15)' },
   transcriptIconActive: { backgroundColor: '#fff' },
-  transcriptIconTxt:  { fontSize: 15 },
+  transcriptIconTxt:    { fontSize: 15 },
 
   // ── Slide image ───────────────────────────────────────────────────────────────
   imgWrap:         { backgroundColor: '#1e1b4b', overflow: 'hidden' },
@@ -615,26 +759,69 @@ const s = StyleSheet.create({
     position: 'absolute', bottom: 0, left: 0, right: 0,
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: 'rgba(10,8,40,0.88)',
-    paddingHorizontal: 14, paddingVertical: 10, gap: 12,
+    paddingHorizontal: 12, paddingVertical: 10, gap: 10,
   },
-  playBtn:     { width: 40, height: 40, borderRadius: 20, backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
-  playIcon:    { fontSize: 16, color: '#fff' },
-  trackWrap:   { flex: 1, gap: 5 },
-  audioErrTxt: { fontSize: 12, color: '#fca5a5' },
-  track:       { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.22)', overflow: 'visible', position: 'relative' },
-  trackFill:   { position: 'absolute', top: 0, left: 0, bottom: 0, backgroundColor: '#818cf8', borderRadius: 2 },
-  thumb:       { position: 'absolute', top: -(THUMB / 2 - 2), width: THUMB, height: THUMB, borderRadius: THUMB / 2, backgroundColor: '#a5b4fc', marginLeft: -(THUMB / 2) },
-  seekStrip:   { position: 'absolute', top: -10, left: 0, right: 0, height: 24, flexDirection: 'row' },
-  seekZone:    { flex: 1, height: '100%' },
-  timesRow:    { flexDirection: 'row', justifyContent: 'space-between' },
-  timeTxt:     { fontSize: 10, color: 'rgba(255,255,255,0.55)' },
+  playBtn:      { width: 40, height: 40, borderRadius: 20, backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
+  playIcon:     { fontSize: 16, color: '#fff' },
+  trackWrap:    { flex: 1, gap: 5 },
+  audioErrTxt:  { fontSize: 12, color: '#fca5a5' },
+  track:        { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.22)', overflow: 'visible', position: 'relative' },
+  trackFill:    { position: 'absolute', top: 0, left: 0, bottom: 0, backgroundColor: '#818cf8', borderRadius: 2 },
+  thumb:        { position: 'absolute', top: -(THUMB / 2 - 2), width: THUMB, height: THUMB, borderRadius: THUMB / 2, backgroundColor: '#a5b4fc', marginLeft: -(THUMB / 2) },
+  seekStrip:    { position: 'absolute', top: -10, left: 0, right: 0, height: 24, flexDirection: 'row' },
+  seekZone:     { flex: 1, height: '100%' },
+  timesRow:     { flexDirection: 'row', justifyContent: 'space-between' },
+  timeTxt:      { fontSize: 10, color: 'rgba(255,255,255,0.55)' },
+  // Fullscreen toggle button (in audio bar)
+  fsToggleBtn:  { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
 
-  // ── Transcript overlay (on image) ─────────────────────────────────────────────
+  // ── Transcript overlay on image ────────────────────────────────────────────────
   transcriptOverlay:        { position: 'absolute', top: 0, left: 0, right: 0, bottom: 62, backgroundColor: 'rgba(10,8,40,0.88)' },
   transcriptOverlayContent: { padding: 18, paddingBottom: 8 },
   transcriptOverlayTxt:     { fontSize: 15, color: '#e0e7ff', lineHeight: 27 },
 
-  // ── Info panel (portrait: below image) ───────────────────────────────────────
+  // ── FULLSCREEN PLAYER ─────────────────────────────────────────────────────────
+  fsRoot: { flex: 1, backgroundColor: '#000' },
+  fsBg:   { backgroundColor: '#000' },
+  fsImg:  { width: '100%', height: '100%' },
+
+  // Top bar
+  fsTopBar: {
+    position: 'absolute', top: 0, left: 0, right: 0,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingBottom: 16,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  fsCounterBadge: { backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 14 },
+  fsCounterTxt:   { color: '#fff', fontSize: 12, fontWeight: '700' },
+  fsTitleTxt:     { flex: 1, color: '#fff', fontSize: 13, fontWeight: '600' },
+  fsExitBtn:      { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 18 },
+
+  // Center play indicator
+  fsCenterIndicator: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  fsCenterCircle:    { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+  fsCenterIcon:      { fontSize: 28, color: '#fff' },
+
+  // Swipe arrow hints
+  fsPrevHint: { position: 'absolute', left: 0, top: '30%', bottom: '30%', width: 52, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.25)' },
+  fsNextHint: { position: 'absolute', right: 0, top: '30%', bottom: '30%', width: 52, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.25)' },
+  fsNavArrow: { color: 'rgba(255,255,255,0.8)', fontSize: 36, fontWeight: '300' },
+
+  // Slide dots (fullscreen)
+  fsDotsRow:    { position: 'absolute', bottom: 80, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6 },
+  fsDot:        { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.35)' },
+  fsDotActive:  { width: 20, height: 6, backgroundColor: '#fff', borderRadius: 3 },
+
+  // Bottom audio controls
+  fsBottomBar: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingTop: 14,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  fsPlayBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(99,102,241,0.85)', alignItems: 'center', justifyContent: 'center' },
+
+  // ── Info panel ────────────────────────────────────────────────────────────────
   infoPanel:     { backgroundColor: '#161d2e', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#1f2a3d' },
   slideTitle:    { fontSize: 16, fontWeight: '700', color: '#f1f5f9', marginBottom: 8, lineHeight: 22 },
   progressRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
@@ -647,21 +834,19 @@ const s = StyleSheet.create({
   chipTxt:       { fontSize: 11, fontWeight: '600', color: '#a5b4fc' },
   chipTxtAlt:    { color: '#6ee7b7' },
 
-  // ── Nav bar (portrait) ────────────────────────────────────────────────────────
-  navBar:     { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111827', borderTopWidth: 1, borderTopColor: '#1f2937', paddingHorizontal: 12, paddingTop: 8 },
-  navBtn:     { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#6366f1', borderRadius: 10 },
-  navBtnOff:  { backgroundColor: '#1f2937' },
-  navBtnTxt:  { color: '#fff', fontWeight: '700', fontSize: 13 },
+  // ── Nav bar ───────────────────────────────────────────────────────────────────
+  navBar:       { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111827', borderTopWidth: 1, borderTopColor: '#1f2937', paddingHorizontal: 12, paddingTop: 8 },
+  navBtn:       { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#6366f1', borderRadius: 10 },
+  navBtnOff:    { backgroundColor: '#1f2937' },
+  navBtnTxt:    { color: '#fff', fontWeight: '700', fontSize: 13 },
   navBtnTxtOff: { color: '#4b5563' },
-  dotsRow:    { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 6 },
-  dot:        { width: 6, height: 6, borderRadius: 3, backgroundColor: '#374151' },
-  dotActive:  { width: 20, height: 6, backgroundColor: '#6366f1', borderRadius: 3 },
+  dotsRow:      { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 6 },
+  dot:          { width: 6, height: 6, borderRadius: 3, backgroundColor: '#374151' },
+  dotActive:    { width: 20, height: 6, backgroundColor: '#6366f1', borderRadius: 3 },
 
-  // ── Bottom section (portrait) — fills dead space ──────────────────────────────
+  // ── Bottom section ────────────────────────────────────────────────────────────
   bottomSection: { flex: 1, backgroundColor: '#0d1420' },
   bottomContent: { paddingHorizontal: 16, paddingTop: 14, gap: 4 },
-
-  // Countdown banner
   countdownBanner:     { backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(99,102,241,0.4)', overflow: 'hidden' },
   countdownBar:        { height: 3, backgroundColor: '#2d3748' },
   countdownFill:       { position: 'absolute', top: 0, left: 0, bottom: 0, backgroundColor: '#6366f1' },
@@ -669,8 +854,6 @@ const s = StyleSheet.create({
   countdownTxt:        { fontSize: 13, fontWeight: '700', color: '#a5b4fc' },
   countdownCancelChip: { backgroundColor: '#6366f1', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   countdownCancelTxt:  { fontSize: 11, fontWeight: '700', color: '#fff' },
-
-  // Auto-play toggle
   autoPlayRow:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 },
   autoPlayRowCompact:  { paddingVertical: 4 },
   autoPlayLeft:        { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
@@ -681,10 +864,7 @@ const s = StyleSheet.create({
   toggleOn:            { backgroundColor: '#6366f1' },
   toggleThumb:         { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' },
   toggleThumbOn:       { alignSelf: 'flex-end' },
-
-  bottomDivider: { height: 1, backgroundColor: '#1a2235', marginVertical: 10 },
-
-  // Transcript (portrait inline)
+  bottomDivider:       { height: 1, backgroundColor: '#1a2235', marginVertical: 10 },
   transcriptToggleRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   transcriptSectionLabel:  { fontSize: 9, fontWeight: '800', color: '#374151', letterSpacing: 1 },
   transcriptTogglePill:    { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: 'rgba(99,102,241,0.15)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.3)' },
@@ -693,40 +873,26 @@ const s = StyleSheet.create({
   transcriptPreviewTxt:    { fontSize: 13, color: '#475569', lineHeight: 20 },
   noTranscriptTxt:         { fontSize: 12, color: '#374151', fontStyle: 'italic' },
 
-  // ── FAB (portrait only) ────────────────────────────────────────────────────────
-  fab: {
-    position: 'absolute', right: 16,
-    width: 54, height: 54, borderRadius: 27,
-    backgroundColor: '#6366f1',
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#6366f1', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.6, shadowRadius: 8, elevation: 12,
-  },
+  // ── FAB ───────────────────────────────────────────────────────────────────────
+  fab:     { position: 'absolute', right: 16, width: 54, height: 54, borderRadius: 27, backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center', shadowColor: '#6366f1', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.6, shadowRadius: 8, elevation: 12 },
   fabIcon: { fontSize: 24 },
 
-  // ── Landscape layout ──────────────────────────────────────────────────────────
-  landscapeBody: { flex: 1, flexDirection: 'row' },
-  rightPanel:    { flex: 1, backgroundColor: '#0f1623', flexDirection: 'column' },
-  rightTop:      { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10 },
-  rightTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10 },
+  // ── Landscape ─────────────────────────────────────────────────────────────────
+  landscapeBody:       { flex: 1, flexDirection: 'row' },
+  rightPanel:          { flex: 1, backgroundColor: '#0f1623', flexDirection: 'column' },
+  rightTop:            { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10 },
+  rightTitleRow:       { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10 },
   slideTitleLandscape: { flex: 1, fontSize: 14, fontWeight: '700', color: '#f1f5f9', lineHeight: 20 },
-
-  // Inline AI button (landscape)
-  aiBtn:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(99,102,241,0.18)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.4)' },
-  aiBtnIcon: { fontSize: 15 },
-  aiBtnTxt:  { fontSize: 11, fontWeight: '700', color: '#a5b4fc' },
-
-  rightDivider: { height: 1, backgroundColor: '#1a2235', marginHorizontal: 14 },
-
-  // Transcript panel (landscape right side — fills remaining space)
+  aiBtn:               { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(99,102,241,0.18)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.4)' },
+  aiBtnIcon:           { fontSize: 15 },
+  aiBtnTxt:            { fontSize: 11, fontWeight: '700', color: '#a5b4fc' },
+  rightDivider:        { height: 1, backgroundColor: '#1a2235', marginHorizontal: 14 },
   transcriptPanel:        { flex: 1, marginTop: 4 },
   transcriptPanelContent: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8 },
   transcriptPanelLabel:   { fontSize: 9, fontWeight: '800', color: '#374151', letterSpacing: 1, marginBottom: 8 },
   transcriptPanelTxt:     { fontSize: 13, color: '#64748b', lineHeight: 20 },
   transcriptPanelEmpty:   { fontSize: 12, color: '#374151', fontStyle: 'italic' },
-
-  // Nav bar (landscape — inside right panel)
-  navBarLandscape: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#1a2235', paddingHorizontal: 14, paddingTop: 8 },
+  navBarLandscape:        { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#1a2235', paddingHorizontal: 14, paddingTop: 8 },
 
   // ── Chat modal ────────────────────────────────────────────────────────────────
   chatOverlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
