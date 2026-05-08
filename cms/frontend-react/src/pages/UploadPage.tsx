@@ -1,26 +1,17 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { Loader2, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Loader2 } from 'lucide-react'
 import MetadataForm from '../components/MetadataForm'
 import FileUploader from '../components/FileUploader'
-import { useCreateTraining, useTrainingStatus } from '../api/trainingApi'
+import ProgressModal from '../components/ProgressModal'
+import { useCreateTraining } from '../api/trainingApi'
 import { useTrainingStore } from '../store/useTrainingStore'
-
-const STEP_LABELS: Record<string, string> = {
-  UPLOADING_DECK: 'Uploading deck...',
-  PARSING_CONTENT: 'Parsing Excel sheets...',
-  TRANSLATING: 'Translating content...',
-  GENERATING_AUDIO: 'Generating audio...',
-  COMPLETE: 'Complete',
-  FAILED: 'Failed',
-}
 
 export default function UploadPage() {
   const { draft, resetDraft } = useTrainingStore()
   const [createdId, setCreatedId] = useState<string | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
   const createTraining = useCreateTraining()
-  const { data: statusData } = useTrainingStatus(createdId)
 
   const isValid =
     draft.name && draft.category && draft.product &&
@@ -33,11 +24,17 @@ export default function UploadPage() {
     try {
       const result = await createTraining.mutateAsync(draft)
       setCreatedId(result.id)
-      toast.success('Training submitted! Processing in background...')
+      setIsModalOpen(true)
+      toast.success('Training submitted! Starting ingestion pipeline...')
       resetDraft()
     } catch {
       toast.error('Upload failed. Check your files and try again.')
     }
+  }
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false)
+    setCreatedId(null)
   }
 
   return (
@@ -46,50 +43,15 @@ export default function UploadPage() {
         <h1 className="text-2xl font-bold text-gray-900">Upload Training Module</h1>
         <p className="text-gray-500 mt-1">
           Fill in the metadata, upload your deck and the combined Excel template
-          (sheets: Transcripts, FAQs, Quizzes). Gemini will auto-translate missing content.
+          (sheets: Transcripts, FAQs, Quizzes). Missing content will be auto-translated.
         </p>
       </div>
 
-      {createdId && statusData && (
-        <div className={`mb-6 p-4 rounded-lg flex items-start gap-3 ${
-          statusData.status === 'READY'
-            ? 'bg-green-50 border border-green-200'
-            : statusData.status === 'ERROR'
-            ? 'bg-red-50 border border-red-200'
-            : 'bg-blue-50 border border-blue-200'
-        }`}>
-          <div className="mt-0.5">
-            {statusData.status === 'READY' ? (
-              <CheckCircle2 size={20} className="text-green-600" />
-            ) : statusData.status === 'ERROR' ? (
-              <AlertCircle size={20} className="text-red-600" />
-            ) : (
-              <Loader2 size={20} className="text-blue-600 animate-spin" />
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-medium text-sm">
-              {statusData.status === 'READY'
-                ? 'Training ready!'
-                : statusData.status === 'ERROR'
-                ? 'Processing failed'
-                : STEP_LABELS[statusData.processingStep] ?? 'Processing...'}
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5">ID: {createdId}</p>
-            {statusData.processingError && (
-              <p className="text-xs text-red-600 mt-1 truncate">{statusData.processingError}</p>
-            )}
-          </div>
-          {(statusData.status === 'READY' || statusData.status === 'ERROR') && (
-            <Link
-              to="/processing"
-              className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-800 whitespace-nowrap"
-            >
-              View pipeline <ArrowRight size={12} />
-            </Link>
-          )}
-        </div>
-      )}
+      <ProgressModal 
+        trainingId={createdId} 
+        isOpen={isModalOpen} 
+        onClose={handleCloseModal} 
+      />
 
       <form onSubmit={handleSubmit} className="space-y-8">
         <div className="card">

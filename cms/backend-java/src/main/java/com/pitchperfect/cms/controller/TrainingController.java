@@ -51,6 +51,11 @@ public class TrainingController {
     @GetMapping
     public ResponseEntity<List<Training>> listTrainings() {
         List<Training> trainings = trainingRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+        trainings.forEach(t -> {
+            if (t.getTotalSlides() == 0) {
+                t.setTotalSlides((int) slideRepository.countByTrainingId(t.getId()));
+            }
+        });
         return ResponseEntity.ok(trainings);
     }
 

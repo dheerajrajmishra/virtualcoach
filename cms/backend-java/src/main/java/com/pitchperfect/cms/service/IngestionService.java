@@ -49,6 +49,7 @@ public class IngestionService {
     private final QuizRepository quizRepository;
     private final TranslationService translationService;
     private final AudioFactoryService audioFactoryService;
+    private final StatusService statusService;
 
     @Value("${app.storage.type:local}")
     private String storageType;
@@ -109,10 +110,9 @@ public class IngestionService {
     }
 
     @Async
-    @Transactional
     public void processUpload(String trainingId, FileData deck, FileData dataExcel) {
         try {
-            setStep(trainingId, "PROCESSING", "UPLOADING_DECK");
+            statusService.setStep(trainingId, "PROCESSING", "UPLOADING_DECK");
             Map<Integer, String> slideImageUrls = new LinkedHashMap<>();
             if (deck != null) {
                 String deckUrl = uploadFile(deck, slidesPrefix + trainingId + "/deck." + getFileExtension(deck));
@@ -125,22 +125,21 @@ public class IngestionService {
             runContent(trainingId, dataExcel, slideImageUrls);
         } catch (Exception e) {
             log.error("Ingestion failed for training {}: {}", trainingId, e.getMessage(), e);
-            setError(trainingId, e.getMessage());
+            statusService.setError(trainingId, e.getMessage());
         }
     }
 
     @Async
-    @Transactional
     public void reprocessTraining(String trainingId, FileData dataExcel) {
         try {
-            setStep(trainingId, "PROCESSING", "CLEARING_DATA");
+            statusService.setStep(trainingId, "PROCESSING", "CLEARING_DATA");
             slideRepository.deleteByTrainingId(trainingId);
             faqRepository.deleteByTrainingId(trainingId);
             quizRepository.deleteByTrainingId(trainingId);
             runContent(trainingId, dataExcel, new LinkedHashMap<>());
         } catch (Exception e) {
             log.error("Reprocess failed for training {}: {}", trainingId, e.getMessage(), e);
-            setError(trainingId, e.getMessage());
+            statusService.setError(trainingId, e.getMessage());
         }
     }
 
@@ -154,12 +153,12 @@ public class IngestionService {
             String excelUrl = uploadFile(dataExcel, slidesPrefix + trainingId + "/data.xlsx");
             updateDataExcelUrl(trainingId, excelUrl);
 
-            setStep(trainingId, "PROCESSING", "PARSING_CONTENT");
+            statusService.setStep(trainingId, "PROCESSING", "PARSING_CONTENT");
             List<Slide> slides = parseTranscriptSheet(trainingId, dataExcel, imageUrlsByIndex);
             List<FAQ> faqs = parseFaqSheet(trainingId, dataExcel);
             List<Quiz> quizzes = parseQuizSheet(trainingId, dataExcel);
 
-            setStep(trainingId, "PROCESSING", "TRANSLATING");
+            statusService.setStep(trainingId, "PROCESSING", "TRANSLATING");
             slides = translationService.fillMissingTranslations(slides, trainingLocales);
             faqs = translationService.fillFaqTranslations(faqs, trainingLocales);
             quizzes = translationService.fillQuizTranslations(quizzes, trainingLocales);
@@ -167,13 +166,21 @@ public class IngestionService {
             slideRepository.saveAll(slides);
             faqRepository.saveAll(faqs);
             quizRepository.saveAll(quizzes);
+            log.info("Saved all translated content to database for training: {}", trainingId);
         }
 
-        setStep(trainingId, "PROCESSING", "GENERATING_AUDIO");
+        statusService.setStep(trainingId, "PROCESSING", "GENERATING_AUDIO");
+        log.info("Starting audio generation for training: {}", trainingId);
+        
         List<Slide> savedSlides = slideRepository.findByTrainingIdOrderBySlideIndex(trainingId);
         audioFactoryService.generateAllAudio(trainingId, savedSlides);
 
-        setStep(trainingId, "READY", "COMPLETE");
+        trainingRepository.findById(trainingId).ifPresent(t -> {
+            t.setTotalSlides((int) slideRepository.countByTrainingId(trainingId));
+            trainingRepository.save(t);
+        });
+
+        statusService.setStep(trainingId, "READY", "COMPLETE");
         log.info("Ingestion complete for training: {}", trainingId);
     }
 
@@ -342,32 +349,10 @@ public class IngestionService {
             BlobId blobId = BlobId.of(bucketName, path);
             BlobInfo blobInfo = BlobInfo.newBuilder(blobId).setContentType(file.contentType()).build();
             gcsStorage.create(blobInfo, file.bytes());
-            return "gs://" + bucketName + "/" + path;
+            return "https://storage.googleapis.com/" + bucketName + "/" + path;
         }
     }
 
-    // ── State helpers ──────────────────────────────────────────────────────────
-
-    private void setStep(String trainingId, String status, String step) {
-        trainingRepository.findById(trainingId).ifPresent(t -> {
-            t.setStatus(status);
-            t.setProcessingStep(step);
-            t.setProcessingError(null);
-            t.setUpdatedAt(Instant.now());
-            trainingRepository.save(t);
-        });
-    }
-
-    private void setError(String trainingId, String errorMsg) {
-        trainingRepository.findById(trainingId).ifPresent(t -> {
-            t.setStatus("ERROR");
-            t.setProcessingStep("FAILED");
-            t.setProcessingError(
-                    errorMsg != null ? errorMsg.substring(0, Math.min(errorMsg.length(), 1999)) : "Unknown error");
-            t.setUpdatedAt(Instant.now());
-            trainingRepository.save(t);
-        });
-    }
 
     private void updateDeckUrl(String trainingId, String url) {
         trainingRepository.findById(trainingId).ifPresent(t -> {

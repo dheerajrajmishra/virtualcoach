@@ -11,7 +11,7 @@ spring:
   datasource:
     url: jdbc:sqlserver://localhost:1433;databaseName=virtualcoach;encrypt=true;trustServerCertificate=true
     username: appuser
-    password: YourStrong@Passw0rd
+    password: test@1234
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
   jpa:
     hibernate:

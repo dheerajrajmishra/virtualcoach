@@ -20,9 +20,9 @@ interface TrainingStore {
 
 const initialDraft: TrainingDraft = {
   name: '',
-  category: '',
-  product: '',
-  locales: [...ALL_LOCALES],   // all selected by default
+  category: 'Product Training',
+  product: 'Product A',
+  locales: ['en'],
   deck: null,
   dataExcel: null,
 }

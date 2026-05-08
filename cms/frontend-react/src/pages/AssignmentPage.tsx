@@ -70,7 +70,7 @@ export default function AssignmentPage() {
                   className="input"
                   value={form.userId}
                   onChange={(e) => setForm({ ...form, userId: e.target.value })}
-                  placeholder="user-uid-from-firebase"
+                  placeholder="e.g. user-001"
                   required
                 />
               </div>

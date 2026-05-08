@@ -124,7 +124,7 @@ public class AudioFactoryService {
                     .build();
 
             gcsStorage.create(blobInfo, mp3Bytes);
-            return "gs://" + bucketName + "/" + path;
+            return "https://storage.googleapis.com/" + bucketName + "/" + path;
         }
     }
 

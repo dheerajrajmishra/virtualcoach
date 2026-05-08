@@ -2,10 +2,10 @@ import axios from 'axios'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Platform } from 'react-native'
 
-// 10.0.2.2 is the special Android emulator loopback to host; web uses localhost directly
+// For physical device testing, use the computer's LAN IP
 const BASE_URL = Platform.OS === 'web'
   ? 'http://localhost:8081/api'
-  : 'http://10.0.2.2:8081/api'
+  : 'http://192.168.1.3:8081/api'
 
 const api = axios.create({ baseURL: BASE_URL })
 
@@ -16,11 +16,18 @@ export function setUserId(uid: string) {
   api.defaults.headers.common['X-User-Id'] = uid
 }
 
+interface ProgressData {
+  completionPercent: number
+  currentSlideIndex: number
+  status: string
+  quizScores: Record<string, number>
+}
+
 export function useProgress(trainingId: string) {
-  return useQuery({
+  return useQuery<ProgressData>({
     queryKey: ['progress', trainingId],
     queryFn: async () => {
-      const { data } = await api.get(`/learner/progress/${trainingId}`)
+      const { data } = await api.get<ProgressData>(`/learner/progress/${trainingId}`)
       return data
     },
   })
