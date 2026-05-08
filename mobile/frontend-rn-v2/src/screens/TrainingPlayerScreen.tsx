@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   View, Text, Image, TouchableOpacity, ScrollView, StyleSheet,
   ActivityIndicator, LayoutAnimation, Platform, UIManager,
-  useWindowDimensions,
+  useWindowDimensions, Modal, TextInput, KeyboardAvoidingView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio, AVPlaybackStatus } from 'expo-av';
@@ -15,20 +15,23 @@ function fmt(ms: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+interface ChatMessage { id: string; role: 'user' | 'assistant'; text: string }
 interface Props { training: Training; onBack: () => void }
 
 export default function TrainingPlayerScreen({ training, onBack }: Props) {
   const { width: W, height: H } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isLandscape = W > H;
+  const chatScrollRef = useRef<ScrollView>(null);
 
-  const [slides, setSlides]               = useState<Slide[]>([]);
-  const [loadingSlides, setLoadingSlides] = useState(true);
-  const [slideError, setSlideError]       = useState<string | null>(null);
-  const [currentIndex, setCurrentIndex]   = useState(0);
-  const [locale, setLocale]               = useState(training.supportedLocales?.[0] ?? 'en');
+  // ── Slide / playback ───────────────────────────────────────────────────────
+  const [slides, setSlides]                 = useState<Slide[]>([]);
+  const [loadingSlides, setLoadingSlides]   = useState(true);
+  const [slideError, setSlideError]         = useState<string | null>(null);
+  const [currentIndex, setCurrentIndex]     = useState(0);
+  const [locale, setLocale]                 = useState(training.supportedLocales?.[0] ?? 'en');
   const [showTranscript, setShowTranscript] = useState(false);
-  const [imageError, setImageError]       = useState(false);
+  const [imageError, setImageError]         = useState(false);
 
   const soundRef                        = useRef<Audio.Sound | null>(null);
   const [isPlaying, setIsPlaying]       = useState(false);
@@ -37,9 +40,30 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   const [audioLoading, setAudioLoading] = useState(false);
   const [audioError, setAudioError]     = useState<string | null>(null);
 
-  const slide = slides[currentIndex];
+  // ── Auto-play ──────────────────────────────────────────────────────────────
+  const [autoPlay, setAutoPlay]             = useState(false);
+  const [autoAdvanceSec, setAutoAdvanceSec] = useState<number | null>(null);
+  const autoPlayRef                         = useRef(false);
+  const autoAdvanceTimer                    = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => { autoPlayRef.current = autoPlay; }, [autoPlay]);
 
-  // ── Load slides ───────────────────────────────────────────────────────────
+  // ── Inline transcript toggle (portrait bottom section) ────────────────────
+  const [showBottomTranscript, setShowBottomTranscript] = useState(false);
+
+  // ── Chat ───────────────────────────────────────────────────────────────────
+  const [showChat, setShowChat]         = useState(false);
+  const [chatInput, setChatInput]       = useState('');
+  const [chatLoading, setChatLoading]   = useState(false);
+  const [chatMode, setChatMode]         = useState<'text' | 'voice' | 'video'>('text');
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([{
+    id: '0', role: 'assistant',
+    text: `Hi! I'm your AI Coach for "${training.name}". Ask me anything — by text, voice, or video!`,
+  }]);
+
+  const slide         = slides[currentIndex];
+  const slideProgress = slides.length > 0 ? (currentIndex + 1) / slides.length : 0;
+
+  // ── Load slides ────────────────────────────────────────────────────────────
   useEffect(() => {
     setLoadingSlides(true);
     fetchSlides(training.id)
@@ -48,7 +72,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
       .finally(() => setLoadingSlides(false));
   }, [training.id]);
 
-  // ── Load audio ────────────────────────────────────────────────────────────
+  // ── Load audio ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const url = resolveMediaUrl(slides[currentIndex]?.audioUrls?.[locale]);
     let cancelled = false;
@@ -62,7 +86,6 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
       setIsPlaying(false); setPositionMs(0); setDurationMs(0);
       setAudioError(null); setImageError(false);
       if (!url) return;
-
       setAudioLoading(true);
       try {
         await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
@@ -74,7 +97,25 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
             setIsPlaying(st.isPlaying);
             setPositionMs(st.positionMillis ?? 0);
             setDurationMs(st.durationMillis ?? 0);
-            if (st.didJustFinish) { setIsPlaying(false); setPositionMs(0); }
+            if (st.didJustFinish) {
+              setIsPlaying(false); setPositionMs(0);
+              if (autoPlayRef.current && currentIndex < slides.length - 1) {
+                let count = 3;
+                setAutoAdvanceSec(count);
+                autoAdvanceTimer.current = setInterval(() => {
+                  count--;
+                  if (count <= 0) {
+                    clearInterval(autoAdvanceTimer.current!);
+                    autoAdvanceTimer.current = null;
+                    setAutoAdvanceSec(null);
+                    setShowTranscript(false);
+                    setCurrentIndex(currentIndex + 1);
+                  } else {
+                    setAutoAdvanceSec(count);
+                  }
+                }, 1000);
+              }
+            }
           }
         );
         if (!cancelled) soundRef.current = sound;
@@ -95,11 +136,20 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     };
   }, [currentIndex, locale, slides]);
 
+  useEffect(() => () => {
+    if (autoAdvanceTimer.current) clearInterval(autoAdvanceTimer.current);
+  }, []);
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
+  function cancelAutoAdvance() {
+    if (autoAdvanceTimer.current) { clearInterval(autoAdvanceTimer.current); autoAdvanceTimer.current = null; }
+    setAutoAdvanceSec(null);
+  }
+
   async function togglePlay() {
     if (!soundRef.current) return;
-    try {
-      isPlaying ? await soundRef.current.pauseAsync() : await soundRef.current.playAsync();
-    } catch (e: any) { setAudioError(e.message); }
+    try { isPlaying ? await soundRef.current.pauseAsync() : await soundRef.current.playAsync(); }
+    catch (e: any) { setAudioError(e.message); }
   }
 
   async function seekTo(ratio: number) {
@@ -109,13 +159,33 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
 
   function goTo(i: number) {
     if (i < 0 || i >= slides.length) return;
+    cancelAutoAdvance();
     setShowTranscript(false);
     setCurrentIndex(i);
   }
 
-  function toggleTranscript() {
+  function toggleTranscriptOverlay() {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setShowTranscript(o => !o);
+  }
+
+  function sendChatMessage() {
+    const text = chatInput.trim();
+    if (!text) return;
+    setChatMessages(prev => [...prev, { id: `u${Date.now()}`, role: 'user', text }]);
+    setChatInput('');
+    setChatLoading(true);
+    setTimeout(() => {
+      const pool = [
+        `Great question! Slide ${currentIndex + 1} covers key aspects of ${training.category}. Would you like me to go deeper?`,
+        `This is a core concept in ${training.product} training. Try the transcript for more context on this slide.`,
+        `In ${training.category}, this builds on earlier concepts. You're ${Math.round(slideProgress * 100)}% through — keep it up!`,
+        `For ${training.product}, understanding this section is critical. Want a quiz or summary?`,
+      ];
+      setChatMessages(prev => [...prev, { id: `a${Date.now()}`, role: 'assistant', text: pool[Math.floor(Math.random() * pool.length)] }]);
+      setChatLoading(false);
+      setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 80);
+    }, 900 + Math.random() * 700);
   }
 
   const audioUrl   = resolveMediaUrl(slide?.audioUrls?.[locale]);
@@ -123,25 +193,21 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   const transcript = slide?.transcripts?.[locale];
   const progress   = durationMs > 0 ? positionMs / durationMs : 0;
 
+  // ── Loading / error ────────────────────────────────────────────────────────
   if (loadingSlides) return (
     <View style={[s.center, { paddingTop: insets.top }]}>
-      <ActivityIndicator size="large" color="#6366f1" />
-      <Text style={s.hint}>Loading slides…</Text>
+      <ActivityIndicator size="large" color="#6366f1" /><Text style={s.hint}>Loading slides…</Text>
     </View>
   );
-
   if (slideError) return (
     <View style={[s.center, { paddingTop: insets.top }]}>
       <Text style={s.errTxt}>⚠️ {slideError}</Text>
-      <TouchableOpacity style={s.outlineBtn} onPress={onBack}>
-        <Text style={s.outlineTxt}>← Back</Text>
-      </TouchableOpacity>
+      <TouchableOpacity style={s.outlineBtn} onPress={onBack}><Text style={s.outlineTxt}>← Back</Text></TouchableOpacity>
     </View>
   );
 
-  // ── Shared sub-components ─────────────────────────────────────────────────
+  // ── Shared sub-components ──────────────────────────────────────────────────
 
-  // Audio bar rendered inside the image area overlay
   const AudioBar = () => (
     <View style={s.audioBarOverlay}>
       <TouchableOpacity style={s.playBtn} onPress={togglePlay} disabled={audioLoading || !audioUrl}>
@@ -149,11 +215,8 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
           ? <ActivityIndicator color="#fff" size="small" />
           : <Text style={s.playIcon}>{!audioUrl ? '🔇' : isPlaying ? '⏸' : '▶'}</Text>}
       </TouchableOpacity>
-
       <View style={s.trackWrap}>
-        {audioError ? (
-          <Text style={s.audioErrTxt} numberOfLines={1}>{audioError}</Text>
-        ) : (
+        {audioError ? <Text style={s.audioErrTxt} numberOfLines={1}>{audioError}</Text> : (
           <>
             <View style={s.track}>
               <View style={[s.trackFill, { width: `${Math.min(progress * 100, 100)}%` as any }]} />
@@ -174,35 +237,21 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     </View>
   );
 
-  // Slide image with audio bar pinned to bottom and transcript overlaid above it
-  const SlideImage = () => (
-    <View style={[
-      s.imgWrap,
-      isLandscape
-        ? { width: W * 0.60, height: H - insets.top - insets.bottom }
-        : { width: W, height: Math.round(H * 0.62) },
-    ]}>
+  const SlideImage = ({ height }: { height: number }) => (
+    <View style={[s.imgWrap, { width: isLandscape ? W * 0.56 : W, height }]}>
       {imageUrl && !imageError ? (
         <Image source={{ uri: imageUrl }} style={s.img} resizeMode="contain"
           onError={() => setImageError(true)} />
       ) : (
         <View style={s.imgFallback}>
           <Text style={s.imgFallbackIcon}>🖼</Text>
-          <Text style={s.imgFallbackTxt}>
-            {imageError ? 'Could not load image' : 'No image'}
-          </Text>
-          {imageError && imageUrl
-            ? <Text style={s.debugUrl} numberOfLines={2}>{imageUrl}</Text>
-            : null}
+          <Text style={s.imgFallbackTxt}>{imageError ? 'Could not load image' : 'No image'}</Text>
+          {imageError && imageUrl ? <Text style={s.debugUrl} numberOfLines={2}>{imageUrl}</Text> : null}
         </View>
       )}
-
-      {/* Counter top-right */}
       <View style={s.counterOverlay}>
         <Text style={s.counterTxt}>{currentIndex + 1} / {slides.length}</Text>
       </View>
-
-      {/* Transcript scrollable overlay, sits above audio bar */}
       {showTranscript && (
         <ScrollView style={s.transcriptOverlay} showsVerticalScrollIndicator={false}
           contentContainerStyle={s.transcriptOverlayContent}>
@@ -211,95 +260,308 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
           </Text>
         </ScrollView>
       )}
-
-      {/* Audio bar pinned to bottom of image area */}
       <AudioBar />
     </View>
   );
 
-  const NavBar = ({ horizontal = false }) => (
-    <View style={[
-      s.navBar,
-      horizontal ? s.navBarHorizontal : s.navBarVertical,
-      { paddingBottom: isLandscape ? insets.bottom + 4 : insets.bottom + 6 },
-    ]}>
-      <TouchableOpacity
-        style={[s.navBtn, currentIndex === 0 && s.navBtnOff]}
+  const NavBar = () => (
+    <View style={[s.navBar, { paddingBottom: insets.bottom + 6 }]}>
+      <TouchableOpacity style={[s.navBtn, currentIndex === 0 && s.navBtnOff]}
         onPress={() => goTo(currentIndex - 1)} disabled={currentIndex === 0}>
         <Text style={[s.navBtnTxt, currentIndex === 0 && s.navBtnTxtOff]}>‹ Prev</Text>
       </TouchableOpacity>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}
-        contentContainerStyle={s.dotsRow}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.dotsRow}>
         {slides.map((_, i) => (
-          <TouchableOpacity key={i} onPress={() => goTo(i)}
-            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+          <TouchableOpacity key={i} onPress={() => goTo(i)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
             <View style={[s.dot, i === currentIndex && s.dotActive]} />
           </TouchableOpacity>
         ))}
       </ScrollView>
-
-      <TouchableOpacity
-        style={[s.navBtn, currentIndex === slides.length - 1 && s.navBtnOff]}
+      <TouchableOpacity style={[s.navBtn, currentIndex === slides.length - 1 && s.navBtnOff]}
         onPress={() => goTo(currentIndex + 1)} disabled={currentIndex === slides.length - 1}>
-        <Text style={[s.navBtnTxt, currentIndex === slides.length - 1 && s.navBtnTxtOff]}>
-          Next ›
-        </Text>
+        <Text style={[s.navBtnTxt, currentIndex === slides.length - 1 && s.navBtnTxtOff]}>Next ›</Text>
       </TouchableOpacity>
     </View>
   );
 
-  // ── Header (shared) ───────────────────────────────────────────────────────
-  const Header = ({ extraTop = 0, extraLeft = 0 }) => (
-    <View style={[s.header, { paddingTop: insets.top + extraTop, paddingLeft: insets.left + extraLeft + 14 }]}>
+  // Shared progress + chips used in both layouts
+  const ProgressChips = () => (
+    <>
+      <View style={s.progressRow}>
+        <View style={s.progressTrack}>
+          <View style={[s.progressFill, { width: `${Math.round(slideProgress * 100)}%` as any }]} />
+        </View>
+        <Text style={s.progressLabel}>{Math.round(slideProgress * 100)}%</Text>
+      </View>
+      <View style={s.chipsRow}>
+        {training.category ? <View style={s.chip}><Text style={s.chipTxt}>{training.category}</Text></View> : null}
+        {training.product ? <View style={[s.chip, s.chipAlt]}><Text style={[s.chipTxt, s.chipTxtAlt]}>{training.product}</Text></View> : null}
+      </View>
+    </>
+  );
+
+  const AutoPlayRow = ({ compact = false }) => (
+    <View style={[s.autoPlayRow, compact && s.autoPlayRowCompact]}>
+      <View style={s.autoPlayLeft}>
+        {!compact && <Text style={s.autoPlayRowIcon}>▶▶</Text>}
+        <View>
+          <Text style={s.autoPlayLabel}>Auto-advance{compact ? '' : ' slides'}</Text>
+          {!compact && <Text style={s.autoPlayDesc}>Move to next slide when audio finishes</Text>}
+        </View>
+      </View>
+      <TouchableOpacity style={[s.toggle, autoPlay && s.toggleOn]}
+        onPress={() => { if (autoPlay) cancelAutoAdvance(); setAutoPlay(o => !o); }} activeOpacity={0.8}>
+        <View style={[s.toggleThumb, autoPlay && s.toggleThumbOn]} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  // Header: shared, compact variant for landscape
+  const Header = ({ compact = false }) => (
+    <View style={[
+      s.header,
+      { paddingTop: insets.top + (compact ? 2 : 6), paddingLeft: insets.left + 14, paddingRight: insets.right + 8 },
+      compact && s.headerCompact,
+    ]}>
       <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
         <Text style={s.backArrow}>←</Text>
       </TouchableOpacity>
       <Text style={s.headerTitle} numberOfLines={1}>{training.name}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.localePills}>
-        {(training.supportedLocales ?? []).map(l => (
-          <TouchableOpacity key={l} style={[s.lPill, locale === l && s.lPillActive]}
-            onPress={() => setLocale(l)}>
-            <Text style={[s.lPillTxt, locale === l && s.lPillTxtActive]}>{l.toUpperCase()}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-      <TouchableOpacity onPress={toggleTranscript} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      {/* Locale pills — fixed width to prevent overflow */}
+      <View style={s.localePillsWrap}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.localePillsContent}>
+          {(training.supportedLocales ?? []).map(l => (
+            <TouchableOpacity key={l} style={[s.lPill, locale === l && s.lPillActive]}
+              onPress={() => setLocale(l)}>
+              <Text style={[s.lPillTxt, locale === l && s.lPillTxtActive]}>{l.toUpperCase()}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+      <TouchableOpacity onPress={toggleTranscriptOverlay}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         style={[s.transcriptIconBtn, showTranscript && s.transcriptIconActive]}>
         <Text style={s.transcriptIconTxt}>📝</Text>
       </TouchableOpacity>
     </View>
   );
 
-  // ── LANDSCAPE layout ──────────────────────────────────────────────────────
+  // ── AI Coach FAB (portrait only) ───────────────────────────────────────────
+  const FAB = () => (
+    <TouchableOpacity style={[s.fab, { bottom: insets.bottom + 72 }]}
+      onPress={() => setShowChat(true)} activeOpacity={0.85}>
+      <Text style={s.fabIcon}>🤖</Text>
+    </TouchableOpacity>
+  );
+
+  // ── Chatbot modal ──────────────────────────────────────────────────────────
+  const ChatModal = () => (
+    <Modal visible={showChat} animationType="slide" transparent onRequestClose={() => setShowChat(false)}>
+      <KeyboardAvoidingView style={s.chatOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={[s.chatSheet, { paddingBottom: insets.bottom + 8 }]}>
+          <View style={s.chatHeader}>
+            <View style={s.chatHeaderLeft}>
+              <View style={s.chatAvatar}><Text style={s.chatAvatarIcon}>🤖</Text></View>
+              <View>
+                <Text style={s.chatTitle}>AI Coach</Text>
+                <Text style={s.chatSubtitle}>Ask anything about this training</Text>
+              </View>
+            </View>
+            <TouchableOpacity style={s.chatCloseBtn} onPress={() => setShowChat(false)}>
+              <Text style={s.chatCloseTxt}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={s.modeRow}>
+            {(['text', 'voice', 'video'] as const).map(m => (
+              <TouchableOpacity key={m} style={[s.modeBtn, chatMode === m && s.modeBtnActive]}
+                onPress={() => setChatMode(m)}>
+                <Text style={s.modeBtnIcon}>{m === 'text' ? '💬' : m === 'voice' ? '🎤' : '📹'}</Text>
+                <Text style={[s.modeBtnTxt, chatMode === m && s.modeBtnTxtActive]}>
+                  {m === 'text' ? 'Text' : m === 'voice' ? 'Voice' : 'Video'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <ScrollView ref={chatScrollRef} style={s.chatMessages} contentContainerStyle={s.chatMessagesContent}
+            onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}>
+            {chatMessages.map(msg => (
+              <View key={msg.id} style={[s.msgBubble, msg.role === 'user' ? s.msgUser : s.msgBot]}>
+                {msg.role === 'assistant' && <Text style={s.msgBotLabel}>AI COACH</Text>}
+                <Text style={[s.msgText, msg.role === 'user' ? s.msgTextUser : s.msgTextBot]}>{msg.text}</Text>
+              </View>
+            ))}
+            {chatLoading && (
+              <View style={[s.msgBubble, s.msgBot]}>
+                <Text style={s.msgBotLabel}>AI COACH</Text>
+                <View style={s.typingRow}>
+                  <ActivityIndicator size="small" color="#6366f1" />
+                  <Text style={s.typingTxt}>Thinking…</Text>
+                </View>
+              </View>
+            )}
+          </ScrollView>
+          {chatMode === 'text' ? (
+            <View style={s.chatInputRow}>
+              <TextInput style={s.chatInput} value={chatInput} onChangeText={setChatInput}
+                placeholder="Ask about this training…" placeholderTextColor="#6b7280"
+                multiline maxLength={500} returnKeyType="send" blurOnSubmit
+                onSubmitEditing={sendChatMessage} />
+              <TouchableOpacity style={[s.sendBtn, !chatInput.trim() && s.sendBtnOff]}
+                onPress={sendChatMessage} disabled={!chatInput.trim() || chatLoading}>
+                <Text style={s.sendBtnTxt}>➤</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={s.altInputArea}>
+              <TouchableOpacity style={s.bigActionBtn}>
+                <Text style={s.bigActionIcon}>{chatMode === 'voice' ? '🎤' : '📹'}</Text>
+              </TouchableOpacity>
+              <Text style={s.altInputHint}>
+                {chatMode === 'voice' ? 'Tap to ask by voice' : 'Tap to ask by video'}
+              </Text>
+            </View>
+          )}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // LANDSCAPE LAYOUT
+  // ══════════════════════════════════════════════════════════════════════════
   if (isLandscape) {
+    const imgH = H - insets.top - insets.bottom;
+
     return (
       <View style={s.root}>
-        <Header extraTop={4} />
+        <Header compact />
         <View style={s.landscapeBody}>
-          <SlideImage />
-          <View style={[s.rightPanel, { paddingRight: insets.right + 12 }]}>
-            {slide?.title
-              ? <Text style={s.slideTitleLandscape} numberOfLines={3}>{slide.title}</Text>
-              : null}
-            <View style={{ flex: 1 }} />
-            <NavBar horizontal />
+
+          {/* ── Left: slide image ── */}
+          <SlideImage height={imgH} />
+
+          {/* ── Right: metadata + transcript + nav ── */}
+          <View style={[s.rightPanel, { paddingRight: insets.right + 10 }]}>
+
+            {/* Fixed top block */}
+            <View style={s.rightTop}>
+              <View style={s.rightTitleRow}>
+                {slide?.title
+                  ? <Text style={s.slideTitleLandscape} numberOfLines={2}>{slide.title}</Text>
+                  : <View style={{ flex: 1 }} />}
+                {/* AI Coach button inline */}
+                <TouchableOpacity style={s.aiBtn} onPress={() => setShowChat(true)}>
+                  <Text style={s.aiBtnIcon}>🤖</Text>
+                  <Text style={s.aiBtnTxt}>Ask AI</Text>
+                </TouchableOpacity>
+              </View>
+              <ProgressChips />
+              <AutoPlayRow compact />
+            </View>
+
+            <View style={s.rightDivider} />
+
+            {/* Scrollable transcript fills remaining space */}
+            <ScrollView style={s.transcriptPanel} showsVerticalScrollIndicator={false}
+              contentContainerStyle={s.transcriptPanelContent}>
+              <Text style={s.transcriptPanelLabel}>TRANSCRIPT</Text>
+              {transcript ? (
+                <Text style={s.transcriptPanelTxt}>{transcript}</Text>
+              ) : (
+                <Text style={s.transcriptPanelEmpty}>No transcript for {locale.toUpperCase()}</Text>
+              )}
+            </ScrollView>
+
+            {/* Nav bar pinned to bottom */}
+            <View style={[s.navBarLandscape, { paddingBottom: insets.bottom + 4 }]}>
+              <TouchableOpacity style={[s.navBtn, currentIndex === 0 && s.navBtnOff]}
+                onPress={() => goTo(currentIndex - 1)} disabled={currentIndex === 0}>
+                <Text style={[s.navBtnTxt, currentIndex === 0 && s.navBtnTxtOff]}>‹ Prev</Text>
+              </TouchableOpacity>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.dotsRow}>
+                {slides.map((_, i) => (
+                  <TouchableOpacity key={i} onPress={() => goTo(i)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+                    <View style={[s.dot, i === currentIndex && s.dotActive]} />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <TouchableOpacity style={[s.navBtn, currentIndex === slides.length - 1 && s.navBtnOff]}
+                onPress={() => goTo(currentIndex + 1)} disabled={currentIndex === slides.length - 1}>
+                <Text style={[s.navBtnTxt, currentIndex === slides.length - 1 && s.navBtnTxtOff]}>Next ›</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
+        <ChatModal />
       </View>
     );
   }
 
-  // ── PORTRAIT layout ───────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // PORTRAIT LAYOUT
+  // ══════════════════════════════════════════════════════════════════════════
   return (
     <View style={s.root}>
-      <Header extraTop={6} />
-      <SlideImage />
-      {slide?.title
-        ? <Text style={s.slideTitle} numberOfLines={2}>{slide.title}</Text>
-        : null}
-      <View style={{ flex: 1 }} />
+      <Header />
+      <SlideImage height={Math.round(H * 0.45)} />
+
+      {/* Info strip: title + progress + chips */}
+      <View style={s.infoPanel}>
+        {slide?.title ? <Text style={s.slideTitle} numberOfLines={2}>{slide.title}</Text> : null}
+        <ProgressChips />
+      </View>
+
+      {/* Nav bar */}
       <NavBar />
+
+      {/* Bottom section — fills dead space, scrollable ─────────────────────── */}
+      <ScrollView
+        style={s.bottomSection}
+        contentContainerStyle={[s.bottomContent, { paddingBottom: insets.bottom + 12 }]}
+        showsVerticalScrollIndicator={false}>
+
+        {/* Auto-advance countdown banner */}
+        {autoAdvanceSec !== null && (
+          <TouchableOpacity style={s.countdownBanner} onPress={cancelAutoAdvance} activeOpacity={0.85}>
+            <View style={s.countdownBar}>
+              <View style={[s.countdownFill, { width: `${((3 - autoAdvanceSec) / 3) * 100}%` as any }]} />
+            </View>
+            <View style={s.countdownRow}>
+              <Text style={s.countdownTxt}>▶▶  Next slide in {autoAdvanceSec}s</Text>
+              <View style={s.countdownCancelChip}><Text style={s.countdownCancelTxt}>Cancel</Text></View>
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {/* Auto-play toggle */}
+        <AutoPlayRow />
+
+        <View style={s.bottomDivider} />
+
+        {/* Transcript — collapsible */}
+        <TouchableOpacity style={s.transcriptToggleRow}
+          onPress={() => setShowBottomTranscript(o => !o)} activeOpacity={0.7}>
+          <Text style={s.transcriptSectionLabel}>TRANSCRIPT</Text>
+          <View style={s.transcriptTogglePill}>
+            <Text style={s.transcriptTogglePillTxt}>{showBottomTranscript ? 'Hide ▲' : 'Show ▼'}</Text>
+          </View>
+        </TouchableOpacity>
+
+        {showBottomTranscript ? (
+          transcript
+            ? <Text style={s.transcriptFullTxt}>{transcript}</Text>
+            : <Text style={s.noTranscriptTxt}>No transcript for {locale.toUpperCase()}</Text>
+        ) : (
+          transcript
+            ? <Text style={s.transcriptPreviewTxt} numberOfLines={2}>{transcript}</Text>
+            : <Text style={s.noTranscriptTxt}>No transcript for {locale.toUpperCase()}</Text>
+        )}
+      </ScrollView>
+
+      {/* Floating AI Coach button */}
+      <FAB />
+      <ChatModal />
     </View>
   );
 }
@@ -307,87 +569,200 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
 const THUMB = 14;
 
 const s = StyleSheet.create({
-  root:   { flex: 1, backgroundColor: '#111827' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: '#111827' },
-  hint:   { marginTop: 10, color: '#9ca3af', fontSize: 15 },
-  errTxt: { color: '#ef4444', fontSize: 15, textAlign: 'center', marginBottom: 16 },
+  root:       { flex: 1, backgroundColor: '#111827' },
+  center:     { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: '#111827' },
+  hint:       { marginTop: 10, color: '#9ca3af', fontSize: 15 },
+  errTxt:     { color: '#ef4444', fontSize: 15, textAlign: 'center', marginBottom: 16 },
   outlineBtn: { borderWidth: 1.5, borderColor: '#6366f1', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
   outlineTxt: { color: '#6366f1', fontWeight: '700' },
 
+  // ── Header ───────────────────────────────────────────────────────────────────
   header: {
-    backgroundColor: '#6366f1', flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 14, paddingBottom: 10, gap: 10,
+    backgroundColor: '#4f46e5',
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 14, paddingBottom: 10, gap: 8,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 6,
   },
-  backArrow:  { fontSize: 26, color: '#fff', lineHeight: 30 },
-  headerTitle:{ fontSize: 15, fontWeight: '700', color: '#fff', flex: 1 },
-  localePills:{ flexGrow: 0, flexShrink: 0 },
-  lPill:      { marginLeft: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.2)' },
-  lPillActive:{ backgroundColor: '#fff' },
-  lPillTxt:   { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.85)' },
-  lPillTxtActive: { color: '#6366f1' },
+  headerCompact: { paddingBottom: 8 },
+  backArrow:     { fontSize: 24, color: '#fff', lineHeight: 28 },
+  headerTitle:   { fontSize: 14, fontWeight: '700', color: '#fff', flex: 1 },
+  // Locale pills — wrapped in a fixed-width View to prevent overflow
+  localePillsWrap:    { flexShrink: 1, maxWidth: 130 },
+  localePillsContent: { flexDirection: 'row', gap: 4 },
+  lPill:              {
+    paddingHorizontal: 8, height: 26, justifyContent: 'center',
+    borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  lPillActive:        { backgroundColor: '#fff' },
+  lPillTxt:           { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.9)' },
+  lPillTxtActive:     { color: '#6366f1' },
+  transcriptIconBtn:  { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.15)' },
+  transcriptIconActive: { backgroundColor: '#fff' },
+  transcriptIconTxt:  { fontSize: 15 },
 
-  // Image container
+  // ── Slide image ───────────────────────────────────────────────────────────────
   imgWrap:         { backgroundColor: '#1e1b4b', overflow: 'hidden' },
   img:             { width: '100%', height: '100%' },
   imgFallback:     { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  imgFallbackIcon: { fontSize: 40 },
+  imgFallbackIcon: { fontSize: 38 },
   imgFallbackTxt:  { color: '#c7d2fe', fontSize: 14 },
   debugUrl:        { color: '#818cf8', fontSize: 10, textAlign: 'center', paddingHorizontal: 20 },
-  counterOverlay:  {
-    position: 'absolute', top: 10, right: 12,
-    backgroundColor: 'rgba(0,0,0,0.45)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20,
-  },
-  counterTxt: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  counterOverlay:  { position: 'absolute', top: 10, right: 12, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  counterTxt:      { color: '#fff', fontSize: 12, fontWeight: '700' },
 
-  // Audio bar — overlaid at bottom of image
+  // ── Audio bar ─────────────────────────────────────────────────────────────────
   audioBarOverlay: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(10,8,40,0.78)',
+    backgroundColor: 'rgba(10,8,40,0.88)',
     paddingHorizontal: 14, paddingVertical: 10, gap: 12,
   },
-  playBtn:    { width: 40, height: 40, borderRadius: 20, backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
-  playIcon:   { fontSize: 17, color: '#fff' },
-  trackWrap:  { flex: 1, gap: 5 },
-  audioErrTxt:{ fontSize: 12, color: '#fca5a5' },
-  track:      { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.22)', overflow: 'visible', position: 'relative' },
-  trackFill:  { position: 'absolute', top: 0, left: 0, bottom: 0, backgroundColor: '#818cf8', borderRadius: 2 },
-  thumb:      { position: 'absolute', top: -(THUMB / 2 - 2), width: THUMB, height: THUMB, borderRadius: THUMB / 2, backgroundColor: '#a5b4fc', marginLeft: -(THUMB / 2) },
-  seekStrip:  { position: 'absolute', top: -10, left: 0, right: 0, height: 24, flexDirection: 'row' },
-  seekZone:   { flex: 1, height: '100%' },
-  timesRow:   { flexDirection: 'row', justifyContent: 'space-between' },
-  timeTxt:    { fontSize: 10, color: 'rgba(255,255,255,0.55)' },
+  playBtn:     { width: 40, height: 40, borderRadius: 20, backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
+  playIcon:    { fontSize: 16, color: '#fff' },
+  trackWrap:   { flex: 1, gap: 5 },
+  audioErrTxt: { fontSize: 12, color: '#fca5a5' },
+  track:       { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.22)', overflow: 'visible', position: 'relative' },
+  trackFill:   { position: 'absolute', top: 0, left: 0, bottom: 0, backgroundColor: '#818cf8', borderRadius: 2 },
+  thumb:       { position: 'absolute', top: -(THUMB / 2 - 2), width: THUMB, height: THUMB, borderRadius: THUMB / 2, backgroundColor: '#a5b4fc', marginLeft: -(THUMB / 2) },
+  seekStrip:   { position: 'absolute', top: -10, left: 0, right: 0, height: 24, flexDirection: 'row' },
+  seekZone:    { flex: 1, height: '100%' },
+  timesRow:    { flexDirection: 'row', justifyContent: 'space-between' },
+  timeTxt:     { fontSize: 10, color: 'rgba(255,255,255,0.55)' },
 
-  // Transcript overlay on image blank area
-  transcriptOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 62,
-    backgroundColor: 'rgba(10,8,40,0.82)',
-  },
+  // ── Transcript overlay (on image) ─────────────────────────────────────────────
+  transcriptOverlay:        { position: 'absolute', top: 0, left: 0, right: 0, bottom: 62, backgroundColor: 'rgba(10,8,40,0.88)' },
   transcriptOverlayContent: { padding: 18, paddingBottom: 8 },
-  transcriptOverlayTxt: { fontSize: 15, color: '#e0e7ff', lineHeight: 27 },
+  transcriptOverlayTxt:     { fontSize: 15, color: '#e0e7ff', lineHeight: 27 },
 
-  // Transcript icon in header
-  transcriptIconBtn:    { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.15)' },
-  transcriptIconActive: { backgroundColor: '#fff' },
-  transcriptIconTxt:    { fontSize: 16 },
+  // ── Info panel (portrait: below image) ───────────────────────────────────────
+  infoPanel:     { backgroundColor: '#161d2e', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#1f2a3d' },
+  slideTitle:    { fontSize: 16, fontWeight: '700', color: '#f1f5f9', marginBottom: 8, lineHeight: 22 },
+  progressRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  progressTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: '#2d3748', overflow: 'hidden' },
+  progressFill:  { position: 'absolute', top: 0, left: 0, bottom: 0, backgroundColor: '#6366f1', borderRadius: 3 },
+  progressLabel: { fontSize: 11, fontWeight: '700', color: '#818cf8', minWidth: 34, textAlign: 'right' },
+  chipsRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip:          { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, backgroundColor: 'rgba(99,102,241,0.18)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.35)' },
+  chipAlt:       { backgroundColor: 'rgba(16,185,129,0.15)', borderColor: 'rgba(16,185,129,0.3)' },
+  chipTxt:       { fontSize: 11, fontWeight: '600', color: '#a5b4fc' },
+  chipTxtAlt:    { color: '#6ee7b7' },
 
-  // Slide title strip (below image, above nav)
-  slideTitle: { fontSize: 16, fontWeight: '700', color: '#e5e7eb', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  // ── Nav bar (portrait) ────────────────────────────────────────────────────────
+  navBar:     { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111827', borderTopWidth: 1, borderTopColor: '#1f2937', paddingHorizontal: 12, paddingTop: 8 },
+  navBtn:     { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#6366f1', borderRadius: 10 },
+  navBtnOff:  { backgroundColor: '#1f2937' },
+  navBtnTxt:  { color: '#fff', fontWeight: '700', fontSize: 13 },
+  navBtnTxtOff: { color: '#4b5563' },
+  dotsRow:    { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 6 },
+  dot:        { width: 6, height: 6, borderRadius: 3, backgroundColor: '#374151' },
+  dotActive:  { width: 20, height: 6, backgroundColor: '#6366f1', borderRadius: 3 },
 
-  // Landscape
-  landscapeBody:       { flex: 1, flexDirection: 'row' },
-  rightPanel:          { flex: 1, backgroundColor: '#111827', paddingHorizontal: 14 },
-  slideTitleLandscape: { fontSize: 15, fontWeight: '700', color: '#e5e7eb', paddingTop: 16, paddingBottom: 4 },
+  // ── Bottom section (portrait) — fills dead space ──────────────────────────────
+  bottomSection: { flex: 1, backgroundColor: '#0d1420' },
+  bottomContent: { paddingHorizontal: 16, paddingTop: 14, gap: 4 },
 
-  // Nav bar
-  navBar:           { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111827', borderTopWidth: 1, borderTopColor: '#1f2937', paddingHorizontal: 12, paddingTop: 8 },
-  navBarVertical:   {},
-  navBarHorizontal: { borderTopWidth: 1, borderTopColor: '#1f2937' },
-  navBtn:           { paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#6366f1', borderRadius: 10 },
-  navBtnOff:        { backgroundColor: '#1f2937' },
-  navBtnTxt:        { color: '#fff', fontWeight: '700', fontSize: 14 },
-  navBtnTxtOff:     { color: '#4b5563' },
-  dotsRow:          { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 6 },
-  dot:              { width: 6, height: 6, borderRadius: 3, backgroundColor: '#374151' },
-  dotActive:        { width: 22, height: 6, backgroundColor: '#6366f1', borderRadius: 3 },
+  // Countdown banner
+  countdownBanner:     { backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(99,102,241,0.4)', overflow: 'hidden' },
+  countdownBar:        { height: 3, backgroundColor: '#2d3748' },
+  countdownFill:       { position: 'absolute', top: 0, left: 0, bottom: 0, backgroundColor: '#6366f1' },
+  countdownRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10 },
+  countdownTxt:        { fontSize: 13, fontWeight: '700', color: '#a5b4fc' },
+  countdownCancelChip: { backgroundColor: '#6366f1', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+  countdownCancelTxt:  { fontSize: 11, fontWeight: '700', color: '#fff' },
+
+  // Auto-play toggle
+  autoPlayRow:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 },
+  autoPlayRowCompact:  { paddingVertical: 4 },
+  autoPlayLeft:        { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  autoPlayRowIcon:     { fontSize: 13, color: '#6366f1' },
+  autoPlayLabel:       { fontSize: 13, fontWeight: '700', color: '#e2e8f0' },
+  autoPlayDesc:        { fontSize: 11, color: '#4b5563', marginTop: 1 },
+  toggle:              { width: 44, height: 24, borderRadius: 12, backgroundColor: '#2d3748', justifyContent: 'center', padding: 2 },
+  toggleOn:            { backgroundColor: '#6366f1' },
+  toggleThumb:         { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' },
+  toggleThumbOn:       { alignSelf: 'flex-end' },
+
+  bottomDivider: { height: 1, backgroundColor: '#1a2235', marginVertical: 10 },
+
+  // Transcript (portrait inline)
+  transcriptToggleRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  transcriptSectionLabel:  { fontSize: 9, fontWeight: '800', color: '#374151', letterSpacing: 1 },
+  transcriptTogglePill:    { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: 'rgba(99,102,241,0.15)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.3)' },
+  transcriptTogglePillTxt: { fontSize: 11, fontWeight: '700', color: '#818cf8' },
+  transcriptFullTxt:       { fontSize: 14, color: '#94a3b8', lineHeight: 22 },
+  transcriptPreviewTxt:    { fontSize: 13, color: '#475569', lineHeight: 20 },
+  noTranscriptTxt:         { fontSize: 12, color: '#374151', fontStyle: 'italic' },
+
+  // ── FAB (portrait only) ────────────────────────────────────────────────────────
+  fab: {
+    position: 'absolute', right: 16,
+    width: 54, height: 54, borderRadius: 27,
+    backgroundColor: '#6366f1',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#6366f1', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.6, shadowRadius: 8, elevation: 12,
+  },
+  fabIcon: { fontSize: 24 },
+
+  // ── Landscape layout ──────────────────────────────────────────────────────────
+  landscapeBody: { flex: 1, flexDirection: 'row' },
+  rightPanel:    { flex: 1, backgroundColor: '#0f1623', flexDirection: 'column' },
+  rightTop:      { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10 },
+  rightTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10 },
+  slideTitleLandscape: { flex: 1, fontSize: 14, fontWeight: '700', color: '#f1f5f9', lineHeight: 20 },
+
+  // Inline AI button (landscape)
+  aiBtn:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(99,102,241,0.18)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.4)' },
+  aiBtnIcon: { fontSize: 15 },
+  aiBtnTxt:  { fontSize: 11, fontWeight: '700', color: '#a5b4fc' },
+
+  rightDivider: { height: 1, backgroundColor: '#1a2235', marginHorizontal: 14 },
+
+  // Transcript panel (landscape right side — fills remaining space)
+  transcriptPanel:        { flex: 1, marginTop: 4 },
+  transcriptPanelContent: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8 },
+  transcriptPanelLabel:   { fontSize: 9, fontWeight: '800', color: '#374151', letterSpacing: 1, marginBottom: 8 },
+  transcriptPanelTxt:     { fontSize: 13, color: '#64748b', lineHeight: 20 },
+  transcriptPanelEmpty:   { fontSize: 12, color: '#374151', fontStyle: 'italic' },
+
+  // Nav bar (landscape — inside right panel)
+  navBarLandscape: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#1a2235', paddingHorizontal: 14, paddingTop: 8 },
+
+  // ── Chat modal ────────────────────────────────────────────────────────────────
+  chatOverlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  chatSheet:      { backgroundColor: '#161d2e', borderTopLeftRadius: 24, borderTopRightRadius: 24, minHeight: '62%', maxHeight: '92%', overflow: 'hidden' },
+  chatHeader:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: '#1f2a3d' },
+  chatHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  chatAvatar:     { width: 44, height: 44, borderRadius: 22, backgroundColor: '#4f46e5', alignItems: 'center', justifyContent: 'center' },
+  chatAvatarIcon: { fontSize: 22 },
+  chatTitle:      { fontSize: 16, fontWeight: '800', color: '#f1f5f9' },
+  chatSubtitle:   { fontSize: 12, color: '#6b7280', marginTop: 2 },
+  chatCloseBtn:   { width: 30, height: 30, borderRadius: 15, backgroundColor: '#1f2a3d', alignItems: 'center', justifyContent: 'center' },
+  chatCloseTxt:   { color: '#9ca3af', fontSize: 13, fontWeight: '700' },
+  modeRow:        { flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 10, gap: 8, borderBottomWidth: 1, borderBottomColor: '#1f2a3d' },
+  modeBtn:        { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 10, backgroundColor: '#1f2a3d' },
+  modeBtnActive:  { backgroundColor: 'rgba(99,102,241,0.18)', borderWidth: 1, borderColor: '#6366f1' },
+  modeBtnIcon:    { fontSize: 15 },
+  modeBtnTxt:     { fontSize: 12, fontWeight: '600', color: '#4b5563' },
+  modeBtnTxtActive: { color: '#a5b4fc' },
+  chatMessages:        { flex: 1 },
+  chatMessagesContent: { padding: 14, gap: 10 },
+  msgBubble:   { maxWidth: '84%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16 },
+  msgUser:     { alignSelf: 'flex-end', backgroundColor: '#6366f1', borderBottomRightRadius: 4 },
+  msgBot:      { alignSelf: 'flex-start', backgroundColor: '#1f2a3d', borderBottomLeftRadius: 4 },
+  msgBotLabel: { fontSize: 9, fontWeight: '800', color: '#6366f1', marginBottom: 4, letterSpacing: 0.8 },
+  msgText:     { fontSize: 14, lineHeight: 20 },
+  msgTextUser: { color: '#fff' },
+  msgTextBot:  { color: '#cbd5e1' },
+  typingRow:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  typingTxt:   { fontSize: 13, color: '#6b7280', fontStyle: 'italic' },
+  chatInputRow: { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#1f2a3d', gap: 8 },
+  chatInput:    { flex: 1, minHeight: 42, maxHeight: 100, backgroundColor: '#1f2a3d', borderRadius: 21, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: '#f1f5f9' },
+  sendBtn:      { width: 42, height: 42, borderRadius: 21, backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
+  sendBtnOff:   { backgroundColor: '#2d3748' },
+  sendBtnTxt:   { fontSize: 16, color: '#fff' },
+  altInputArea: { alignItems: 'center', justifyContent: 'center', paddingVertical: 24, borderTopWidth: 1, borderTopColor: '#1f2a3d', gap: 12 },
+  bigActionBtn: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(99,102,241,0.18)', borderWidth: 2, borderColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
+  bigActionIcon:{ fontSize: 32 },
+  altInputHint: { fontSize: 13, color: '#6b7280' },
 });
