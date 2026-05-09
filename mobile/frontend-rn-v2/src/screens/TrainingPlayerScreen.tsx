@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio, AVPlaybackStatus } from 'expo-av';
-import { fetchSlides, resolveMediaUrl, askFaq, transcribeAudio, Slide, Training } from '../api';
+import { fetchSlides, resolveMediaUrl, askFaq, transcribeAudio, fetchQuiz, submitQuizText, QuizQuestion, EvalResult, Slide, Training } from '../api';
 
 if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
 
@@ -79,6 +79,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   const [showFsControls, setShowFsControls] = useState(true);
   const [showPlayFlash, setShowPlayFlash]   = useState(false);
   const [showFsLangPicker, setShowFsLangPicker] = useState(false);
+  const [showLangPicker, setShowLangPicker]     = useState(false);
   const fsControlsTimer                     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playFlashTimer                      = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentIndexRef                     = useRef(0);
@@ -104,6 +105,14 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     id: '0', role: 'assistant',
     text: `Hi! I'm your AI Coach for "${training.name}". Ask me anything about this training!`,
   }]);
+
+  const [quizPendingSlide, setQuizPendingSlide] = useState<number | null>(null);
+  const [showQuiz, setShowQuiz]                 = useState(false);
+  const [activeQuiz, setActiveQuiz]             = useState<QuizQuestion | null>(null);
+  const [quizAnswer, setQuizAnswer]             = useState('');
+  const [quizResult, setQuizResult]             = useState<EvalResult | null>(null);
+  const [quizSubmitting, setQuizSubmitting]     = useState(false);
+  const [pendingNavTo, setPendingNavTo]         = useState<number | null>(null);
 
   const slide         = slides[currentIndex];
   const slideProgress = slides.length > 0 ? (currentIndex + 1) / slides.length : 0;
@@ -134,7 +143,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
         await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
         const { sound } = await Audio.Sound.createAsync(
           { uri: url },
-          { shouldPlay: false, progressUpdateIntervalMillis: 250 },
+          { shouldPlay: autoPlayRef.current, progressUpdateIntervalMillis: 250 },
           (st: AVPlaybackStatus) => {
             if (cancelled || !st.isLoaded) return;
             setIsPlaying(st.isPlaying);
@@ -142,20 +151,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
             setDurationMs(st.durationMillis ?? 0);
             if (st.didJustFinish) {
               setIsPlaying(false); setPositionMs(0);
-              if (autoPlayRef.current && currentIndex < slides.length - 1) {
-                let count = 3;
-                setAutoAdvanceSec(count);
-                autoAdvanceTimer.current = setInterval(() => {
-                  count--;
-                  if (count <= 0) {
-                    clearInterval(autoAdvanceTimer.current!);
-                    autoAdvanceTimer.current = null;
-                    setAutoAdvanceSec(null);
-                    setShowTranscript(false);
-                    setCurrentIndex(currentIndex + 1);
-                  } else { setAutoAdvanceSec(count); }
-                }, 1000);
-              }
+              setQuizPendingSlide(currentIndex);
             }
           }
         );
@@ -181,6 +177,25 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     if (fsControlsTimer.current) clearTimeout(fsControlsTimer.current);
     if (playFlashTimer.current) clearTimeout(playFlashTimer.current);
   }, []);
+
+  useEffect(() => {
+    if (quizPendingSlide === null) return;
+    const idx = quizPendingSlide;
+    setQuizPendingSlide(null);
+    fetchQuiz(training.id, idx, locale)
+      .then(q => {
+        if (q) {
+          setActiveQuiz(q);
+          setQuizAnswer('');
+          setQuizResult(null);
+          setShowQuiz(true);
+        } else {
+          startAutoAdvance(idx);
+        }
+      })
+      .catch(() => startAutoAdvance(idx));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quizPendingSlide]);
 
   const swipeResponder = useRef(
     PanResponder.create({
@@ -211,6 +226,22 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   function cancelAutoAdvance() {
     if (autoAdvanceTimer.current) { clearInterval(autoAdvanceTimer.current); autoAdvanceTimer.current = null; }
     setAutoAdvanceSec(null);
+  }
+
+  function startAutoAdvance(fromIndex: number) {
+    if (!autoPlayRef.current || fromIndex >= slidesLenRef.current - 1) return;
+    let count = 3;
+    setAutoAdvanceSec(count);
+    autoAdvanceTimer.current = setInterval(() => {
+      count--;
+      if (count <= 0) {
+        clearInterval(autoAdvanceTimer.current!);
+        autoAdvanceTimer.current = null;
+        setAutoAdvanceSec(null);
+        setShowTranscript(false);
+        setCurrentIndex(fromIndex + 1);
+      } else { setAutoAdvanceSec(count); }
+    }, 1000);
   }
 
   function showFsControlsAndScheduleHide() {
@@ -258,6 +289,57 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   function toggleTranscriptOverlay() {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setShowTranscript(o => !o);
+  }
+
+  function dismissQuiz() {
+    const navTo = pendingNavTo;
+    const idx   = activeQuiz?.slideIndex ?? currentIndex;
+    setShowQuiz(false);
+    setActiveQuiz(null);
+    setQuizResult(null);
+    setPendingNavTo(null);
+    if (navTo !== null) {
+      setShowTranscript(false);
+      setCurrentIndex(navTo);
+    } else {
+      startAutoAdvance(idx);
+    }
+  }
+
+  async function goForward() {
+    const targetIndex = currentIndex + 1;
+    if (targetIndex >= slides.length) return;
+    cancelAutoAdvance();
+    try {
+      const q = await fetchQuiz(training.id, currentIndex, locale);
+      if (q) {
+        setActiveQuiz(q);
+        setQuizAnswer('');
+        setQuizResult(null);
+        setPendingNavTo(targetIndex);
+        setShowQuiz(true);
+        return;
+      }
+    } catch { /* no quiz data — navigate directly */ }
+    setShowTranscript(false);
+    setCurrentIndex(targetIndex);
+  }
+
+  async function submitQuiz() {
+    if (!activeQuiz || !quizAnswer.trim()) return;
+    setQuizSubmitting(true);
+    try {
+      const result = await submitQuizText(training.id, activeQuiz.id, locale, quizAnswer.trim());
+      setQuizResult(result);
+    } catch {
+      setQuizResult({
+        score: 0, maxScore: activeQuiz.maxScore, scorePercent: 0,
+        feedback: 'Could not evaluate right now. Your answer has been noted.',
+        strengths: '', improvements: '',
+      });
+    } finally {
+      setQuizSubmitting(false);
+    }
   }
 
   async function sendChatMessage(textOrEvent?: string | any) {
@@ -354,11 +436,17 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     </View>
   );
 
+  function openChat() {
+    soundRef.current?.pauseAsync().catch(() => {});
+    setIsPlaying(false);
+    setShowChat(true);
+  }
+
   // ── AI Coach FAQ Button (Consistent across all stages) ─────────────────────
   const AskAIBtn = ({ style, onPress, compact = false }: { style?: any, onPress?: () => void, compact?: boolean }) => (
     <TouchableOpacity
       style={[s.askAiBtn, compact && s.askAiBtnCompact, style]}
-      onPress={onPress || (() => setShowChat(true))}
+      onPress={onPress || openChat}
       activeOpacity={0.85}>
       <Text style={[s.askAiIcon, compact && s.askAiIconCompact]}>🤖</Text>
       <Text style={[s.askAiLabel, compact && s.askAiLabelCompact]}>Ask AI</Text>
@@ -442,7 +530,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
         ))}
       </ScrollView>
       <TouchableOpacity style={[s.navBtn, currentIndex === slides.length - 1 && s.navBtnOff]}
-        onPress={() => goTo(currentIndex + 1)} disabled={currentIndex === slides.length - 1}>
+        onPress={goForward} disabled={currentIndex === slides.length - 1}>
         <Text style={[s.navBtnTxt, currentIndex === slides.length - 1 && s.navBtnTxtOff]}>Next ›</Text>
       </TouchableOpacity>
     </View>
@@ -458,26 +546,44 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
       { paddingTop: insets.top + (compact ? 2 : 6), paddingLeft: insets.left + 14, paddingRight: insets.right + 8 },
       compact && s.headerCompact,
     ]}>
-      <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-        <Text style={s.backArrow}>←</Text>
-      </TouchableOpacity>
-      <Text style={s.headerTitle} numberOfLines={1}>{slide?.title || training.name}</Text>
-      <View style={s.localePillsWrap}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.localePillsContent}>
-          {(training.supportedLocales ?? []).map(l => (
-            <TouchableOpacity key={l} style={[s.lPill, locale === l && s.lPillActive]} onPress={() => setLocale(l)}>
-              <Text style={[s.lPillTxt, locale === l && s.lPillTxtActive]}>{l.toUpperCase()}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+      <View style={s.headerRow}>
+        <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <Text style={s.backArrow}>←</Text>
+        </TouchableOpacity>
+        <Text style={s.headerTitle} numberOfLines={1}>{slide?.title || training.name}</Text>
+        {(training.supportedLocales ?? []).length > 1 && (
+          <TouchableOpacity
+            style={[s.fsLangBtn, showLangPicker && s.fsLangBtnActive]}
+            onPress={() => setShowLangPicker(o => !o)}>
+            <Text style={s.fsLangBtnIcon}>🌐</Text>
+            <Text style={s.fsLangBtnTxt}>{locale.toUpperCase()}</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity onPress={togglePlay} disabled={audioLoading || !audioUrl}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={[s.headerPlayBtn, isPlaying && s.headerPlayActive]}>
+          {audioLoading
+            ? <ActivityIndicator color={isPlaying ? '#6366f1' : '#fff'} size="small" />
+            : <Text style={[s.headerPlayIcon, isPlaying && s.headerPlayIconActive]}>{!audioUrl ? '🔇' : isPlaying ? '⏸' : '▶'}</Text>}
+        </TouchableOpacity>
       </View>
-      <TouchableOpacity onPress={togglePlay} disabled={audioLoading || !audioUrl}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        style={[s.headerPlayBtn, isPlaying && s.headerPlayActive]}>
-        {audioLoading
-          ? <ActivityIndicator color={isPlaying ? "#6366f1" : "#fff"} size="small" />
-          : <Text style={[s.headerPlayIcon, isPlaying && s.headerPlayIconActive]}>{!audioUrl ? '🔇' : isPlaying ? '⏸' : '▶'}</Text>}
-      </TouchableOpacity>
+      {showLangPicker && (
+        <View style={s.headerLangPanel}>
+          <Text style={s.fsLangPickerLabel}>AUDIO LANGUAGE</Text>
+          <View style={s.fsLangPillRow}>
+            {(training.supportedLocales ?? []).map(l => (
+              <TouchableOpacity key={l}
+                style={[s.fsLangPill, locale === l && s.fsLangPillActive]}
+                onPress={() => { setLocale(l); setShowLangPicker(false); }}>
+                <Text style={[s.fsLangPillTxt, locale === l && s.fsLangPillTxtActive]}>
+                  {l.toUpperCase()}
+                </Text>
+                {locale === l && <Text style={s.fsLangPillCheck}>✓</Text>}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
     </View>
   );
 
@@ -585,7 +691,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
           {/* FAQ Button */}
           <AskAIBtn
             style={{ position: 'absolute', bottom: insets.bottom + 80, right: insets.right + 16 }}
-            onPress={() => { setShowChat(true); showFsControlsAndScheduleHide(); }}
+            onPress={() => { openChat(); showFsControlsAndScheduleHide(); }}
           />
 
           {/* Bottom audio bar — AudioTrack inlined to avoid sub-component remount */}
@@ -694,6 +800,86 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     </Modal>
   );
 
+  // ── Quiz modal ────────────────────────────────────────────────────────────
+  const quizModal = (
+    <Modal visible={showQuiz} animationType="slide" transparent onRequestClose={dismissQuiz}>
+      <KeyboardAvoidingView style={s.chatOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={s.chatSheet}>
+          <View style={s.chatHandleWrap}><View style={s.chatHandle} /></View>
+
+          <View style={s.chatHeader}>
+            <Text style={s.chatTitle}>Quick Check</Text>
+            <TouchableOpacity style={s.chatCloseBtn} onPress={dismissQuiz}>
+              <Text style={s.chatCloseTxt}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          {quizResult ? (
+            <ScrollView contentContainerStyle={s.quizResultContent}>
+              <View style={s.quizScoreWrap}>
+                <View style={[s.quizScoreBadge,
+                  { backgroundColor: quizResult.scorePercent >= 70 ? '#10b981' : '#f59e0b' }]}>
+                  <Text style={s.quizScoreNum}>{quizResult.score}</Text>
+                  <Text style={s.quizScoreOf}>/{quizResult.maxScore}</Text>
+                </View>
+                <Text style={s.quizScoreLabel}>
+                  {quizResult.scorePercent >= 70 ? 'Great job!' : 'Keep practising!'}
+                </Text>
+              </View>
+              {!!quizResult.feedback && (
+                <View style={s.quizSection}>
+                  <Text style={s.quizSectionTitle}>Feedback</Text>
+                  <Text style={s.quizSectionTxt}>{quizResult.feedback}</Text>
+                </View>
+              )}
+              {!!quizResult.strengths && (
+                <View style={s.quizSection}>
+                  <Text style={[s.quizSectionTitle, { color: '#10b981' }]}>Strengths</Text>
+                  <Text style={s.quizSectionTxt}>{quizResult.strengths}</Text>
+                </View>
+              )}
+              {!!quizResult.improvements && (
+                <View style={s.quizSection}>
+                  <Text style={[s.quizSectionTitle, { color: '#f59e0b' }]}>To improve</Text>
+                  <Text style={s.quizSectionTxt}>{quizResult.improvements}</Text>
+                </View>
+              )}
+              <TouchableOpacity style={s.quizContinueBtn} onPress={dismissQuiz}>
+                <Text style={s.quizContinueTxt}>Continue ›</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          ) : (
+            <View style={s.quizBody}>
+              <Text style={s.quizQuestion}>{activeQuiz?.question}</Text>
+              <TextInput
+                style={s.quizInput}
+                value={quizAnswer}
+                onChangeText={setQuizAnswer}
+                placeholder="Type your answer here…"
+                placeholderTextColor="#4b5563"
+                multiline
+                maxLength={1000}
+              />
+              <View style={s.quizActions}>
+                <TouchableOpacity style={s.quizSkipBtn} onPress={dismissQuiz}>
+                  <Text style={s.quizSkipTxt}>Skip</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.quizSubmitBtn, (!quizAnswer.trim() || quizSubmitting) && s.quizSubmitOff]}
+                  onPress={submitQuiz}
+                  disabled={!quizAnswer.trim() || quizSubmitting}>
+                  {quizSubmitting
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={s.quizSubmitTxt}>Submit</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+
   // LANDSCAPE
   // ══════════════════════════════════════════════════════════════════════════
   if (isLandscape) {
@@ -734,7 +920,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
                   ))}
                 </ScrollView>
                 <TouchableOpacity style={[s.navBtn, currentIndex === slides.length - 1 && s.navBtnOff]}
-                  onPress={() => goTo(currentIndex + 1)} disabled={currentIndex === slides.length - 1}>
+                  onPress={goForward} disabled={currentIndex === slides.length - 1}>
                   <Text style={[s.navBtnTxt, currentIndex === slides.length - 1 && s.navBtnTxtOff]}>Next ›</Text>
                 </TouchableOpacity>
               </View>
@@ -743,6 +929,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
         </View>
         {fsModal}
         {chatModal}
+        {quizModal}
       </View>
     );
   }
@@ -789,6 +976,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
       {fab}
       {fsModal}
       {chatModal}
+      {quizModal}
     </View>
   );
 }
@@ -805,10 +993,12 @@ const s = StyleSheet.create({
 
   // ── Header ───────────────────────────────────────────────────────────────────
   header: {
-    backgroundColor: '#4f46e5', flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 14, paddingBottom: 10, gap: 8,
+    backgroundColor: '#4f46e5',
+    paddingHorizontal: 14, paddingBottom: 10,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 6,
   },
+  headerRow:      { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerLangPanel: { marginTop: 10, backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: 12, padding: 12, gap: 10 },
   headerCompact:        { paddingBottom: 8 },
   backArrow:            { fontSize: 24, color: '#fff', lineHeight: 28 },
   headerTitle:          { fontSize: 14, fontWeight: '700', color: '#fff', flex: 1 },
@@ -1052,4 +1242,26 @@ const s = StyleSheet.create({
   sendBtn:       { width: 44, height: 44, borderRadius: 22, backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
   sendBtnOff:    { backgroundColor: '#374151' },
   sendBtnTxt:    { fontSize: 16, color: '#fff' },
+
+  // ── Quiz modal ────────────────────────────────────────────────────────────
+  quizResultContent: { padding: 24, gap: 20, paddingBottom: 40 },
+  quizScoreWrap:     { alignItems: 'center', gap: 8, paddingVertical: 8 },
+  quizScoreBadge:    { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
+  quizScoreNum:      { fontSize: 28, fontWeight: '800', color: '#fff' },
+  quizScoreOf:       { fontSize: 16, color: 'rgba(255,255,255,0.8)', alignSelf: 'flex-end', marginBottom: 4 },
+  quizScoreLabel:    { fontSize: 16, fontWeight: '700', color: '#f1f5f9' },
+  quizSection:       { backgroundColor: '#1f2937', borderRadius: 12, padding: 14, gap: 4 },
+  quizSectionTitle:  { fontSize: 11, fontWeight: '700', color: '#6366f1', textTransform: 'uppercase', letterSpacing: 0.6 },
+  quizSectionTxt:    { fontSize: 14, color: '#d1d5db', lineHeight: 20 },
+  quizContinueBtn:   { backgroundColor: '#6366f1', borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
+  quizContinueTxt:   { fontSize: 15, fontWeight: '700', color: '#fff' },
+  quizBody:          { flex: 1, padding: 20, gap: 16 },
+  quizQuestion:      { fontSize: 16, fontWeight: '600', color: '#f1f5f9', lineHeight: 24 },
+  quizInput:         { flex: 1, minHeight: 100, maxHeight: 200, backgroundColor: '#1f2937', borderRadius: 12, padding: 14, fontSize: 14, color: '#f1f5f9', textAlignVertical: 'top' },
+  quizActions:       { flexDirection: 'row', gap: 12 },
+  quizSkipBtn:       { flex: 1, borderWidth: 1.5, borderColor: '#374151', borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  quizSkipTxt:       { fontSize: 14, fontWeight: '600', color: '#9ca3af' },
+  quizSubmitBtn:     { flex: 2, backgroundColor: '#6366f1', borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  quizSubmitOff:     { backgroundColor: '#374151' },
+  quizSubmitTxt:     { fontSize: 14, fontWeight: '700', color: '#fff' },
 });

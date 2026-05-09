@@ -50,7 +50,6 @@ public class EvaluationService {
     @Value("${azure.openai.api-version}")
     private String apiVersion;
 
-    @Async
     public EvaluationResult evaluate(QuizSubmission submission) {
         try {
             Quiz quiz = quizRepository.findById(submission.getQuizId())

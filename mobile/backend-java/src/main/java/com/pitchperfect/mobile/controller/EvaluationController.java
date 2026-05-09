@@ -38,7 +38,7 @@ public class EvaluationController {
                 .submittedAt(Instant.now())
                 .build();
 
-        return ResponseEntity.accepted().body(evaluationService.evaluate(submission));
+        return ResponseEntity.ok(evaluationService.evaluate(submission));
     }
 
     @PostMapping("/submit/media")
@@ -61,6 +61,6 @@ public class EvaluationController {
                 .submittedAt(Instant.now())
                 .build();
 
-        return ResponseEntity.accepted().body(evaluationService.evaluate(submission));
+        return ResponseEntity.ok(evaluationService.evaluate(submission));
     }
 }

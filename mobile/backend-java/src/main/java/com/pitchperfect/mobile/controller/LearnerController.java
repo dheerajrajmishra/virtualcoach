@@ -1,6 +1,8 @@
 package com.pitchperfect.mobile.controller;
 
 import com.pitchperfect.mobile.model.LearnerProgress;
+import com.pitchperfect.mobile.model.Quiz;
+import com.pitchperfect.mobile.repository.QuizRepository;
 import com.pitchperfect.mobile.service.ProgressService;
 import com.pitchperfect.mobile.service.RagService;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -19,6 +22,7 @@ public class LearnerController {
 
     private final ProgressService progressService;
     private final RagService ragService;
+    private final QuizRepository quizRepository;
     private final com.pitchperfect.mobile.service.ElevenLabsSpeechService elevenLabsSpeechService;
 
     @GetMapping("/progress/{trainingId}")
@@ -50,6 +54,29 @@ public class LearnerController {
 
         String answer = ragService.answer(trainingId, slideIndex, question, locale);
         return ResponseEntity.ok(Map.of("answer", answer));
+    }
+
+    @GetMapping("/quiz/{trainingId}/slide/{slideIndex}")
+    public ResponseEntity<?> getQuiz(
+            @PathVariable String trainingId,
+            @PathVariable int slideIndex,
+            @RequestParam(defaultValue = "en") String locale) {
+
+        List<Quiz> quizzes = quizRepository.findByTrainingIdAndSlideIndex(trainingId, slideIndex);
+        if (quizzes.isEmpty()) return ResponseEntity.noContent().build();
+
+        Quiz quiz = quizzes.get(0);
+        String question = quiz.getQuestions() != null
+                ? quiz.getQuestions().getOrDefault(locale, quiz.getQuestions().getOrDefault("en", ""))
+                : "";
+
+        return ResponseEntity.ok(Map.of(
+                "id",         quiz.getId(),
+                "slideIndex", quiz.getSlideIndex(),
+                "question",   question,
+                "inputType",  quiz.getInputType() != null ? quiz.getInputType() : "text",
+                "maxScore",   quiz.getMaxScore()
+        ));
     }
 
     @PostMapping("/transcribe")

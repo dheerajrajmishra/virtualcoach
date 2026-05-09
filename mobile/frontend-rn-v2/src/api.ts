@@ -79,6 +79,47 @@ export async function askFaq(trainingId: string, req: AskRequest): Promise<AskRe
   return res.json();
 }
 
+export interface QuizQuestion {
+  id: string;
+  slideIndex: number;
+  question: string;
+  inputType: 'text' | 'audio' | 'video';
+  maxScore: number;
+}
+
+export interface EvalResult {
+  score: number;
+  maxScore: number;
+  scorePercent: number;
+  feedback: string;
+  strengths: string;
+  improvements: string;
+}
+
+export async function fetchQuiz(trainingId: string, slideIndex: number, locale: string): Promise<QuizQuestion | null> {
+  const res = await fetch(
+    `${MOBILE_BASE}/learner/quiz/${trainingId}/slide/${slideIndex}?locale=${locale}`,
+    { headers: HEADERS },
+  );
+  if (res.status === 204) return null;
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function submitQuizText(
+  trainingId: string,
+  quizId: string,
+  locale: string,
+  response: string,
+): Promise<EvalResult> {
+  const res = await fetch(
+    `${MOBILE_BASE}/evaluation/submit/text?trainingId=${encodeURIComponent(trainingId)}&quizId=${encodeURIComponent(quizId)}&locale=${encodeURIComponent(locale)}&response=${encodeURIComponent(response)}`,
+    { method: 'POST', headers: { 'X-User-Id': 'learner-uid' } },
+  );
+  if (!res.ok) throw new Error('Evaluation failed');
+  return res.json();
+}
+
 export async function transcribeAudio(uri: string, locale: string): Promise<string> {
   const formData = new FormData();
   formData.append('audio', {
