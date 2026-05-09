@@ -98,6 +98,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   const [chatLoading, setChatLoading]   = useState(false);
   const [chatMode, setChatMode]         = useState<'text' | 'voice' | 'video'>('text');
   const [isRecording, setIsRecording]   = useState(false);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const recordingRef                    = useRef<Audio.Recording | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([{
     id: '0', role: 'assistant',
@@ -391,7 +392,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   );
 
   const SlideImage = ({ height }: { height: number }) => (
-    <View style={[s.imgWrap, { width: isLandscape ? W * 0.56 : W, height }]}>
+    <View style={[s.imgWrap, { width: isLandscape ? (rightPanelCollapsed ? W : W * 0.56) : W, height }]}>
       {imageUrl && !imageError ? (
         <Image source={{ uri: imageUrl }} style={s.img} resizeMode="contain"
           onError={() => setImageError(true)} />
@@ -405,6 +406,11 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
       <View style={s.counterOverlay}>
         <Text style={s.counterTxt}>{currentIndex + 1} / {slides.length}</Text>
       </View>
+      {isLandscape && (
+        <TouchableOpacity style={s.collapseToggleBtn} onPress={() => setRightPanelCollapsed(!rightPanelCollapsed)}>
+          <Text style={s.collapseToggleTxt}>{rightPanelCollapsed ? '◂ Show Info' : 'Hide Info ▸'}</Text>
+        </TouchableOpacity>
+      )}
       {showTranscript && (
         <ScrollView style={s.transcriptOverlay} showsVerticalScrollIndicator={false}
           contentContainerStyle={s.transcriptOverlayContent}>
@@ -487,10 +493,12 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
           ))}
         </ScrollView>
       </View>
-      <TouchableOpacity onPress={toggleTranscriptOverlay}
+      <TouchableOpacity onPress={togglePlay} disabled={audioLoading || !audioUrl}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        style={[s.transcriptIconBtn, showTranscript && s.transcriptIconActive]}>
-        <Text style={s.transcriptIconTxt}>📝</Text>
+        style={[s.headerPlayBtn, isPlaying && s.headerPlayActive]}>
+        {audioLoading
+          ? <ActivityIndicator color={isPlaying ? "#6366f1" : "#fff"} size="small" />
+          : <Text style={[s.headerPlayIcon, isPlaying && s.headerPlayIconActive]}>{!audioUrl ? '🔇' : isPlaying ? '⏸' : '▶'}</Text>}
       </TouchableOpacity>
     </View>
   );
@@ -721,46 +729,48 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
         <Header compact />
         <View style={s.landscapeBody}>
           <SlideImage height={imgH} />
-          <View style={[s.rightPanel, { paddingRight: insets.right + 10 }]}>
-            <View style={s.rightTop}>
-              <View style={s.rightTitleRow}>
-                {slide?.title
-                  ? <Text style={s.slideTitleLandscape} numberOfLines={2}>{slide.title}</Text>
-                  : <View style={{ flex: 1 }} />}
-                <TouchableOpacity style={s.aiBtn} onPress={() => setShowChat(true)}>
-                  <Text style={s.aiBtnIcon}>🤖</Text>
-                  <Text style={s.aiBtnTxt}>Ask AI</Text>
+          {!rightPanelCollapsed && (
+            <View style={[s.rightPanel, { paddingRight: insets.right + 10 }]}>
+              <View style={s.rightTop}>
+                <View style={s.rightTitleRow}>
+                  {slide?.title
+                    ? <Text style={s.slideTitleLandscape} numberOfLines={2}>{slide.title}</Text>
+                    : <View style={{ flex: 1 }} />}
+                  <TouchableOpacity style={s.aiBtn} onPress={() => setShowChat(true)}>
+                    <Text style={s.aiBtnIcon}>🤖</Text>
+                    <Text style={s.aiBtnTxt}>Ask AI</Text>
+                  </TouchableOpacity>
+                </View>
+                <ProgressChips />
+                <AutoPlayRow compact />
+              </View>
+              <View style={s.rightDivider} />
+              <ScrollView style={s.transcriptPanel} showsVerticalScrollIndicator={false}
+                contentContainerStyle={s.transcriptPanelContent}>
+                <Text style={s.transcriptPanelLabel}>TRANSCRIPT</Text>
+                {transcript
+                  ? <Text style={s.transcriptPanelTxt}>{transcript}</Text>
+                  : <Text style={s.transcriptPanelEmpty}>No transcript for {locale.toUpperCase()}</Text>}
+              </ScrollView>
+              <View style={[s.navBarLandscape, { paddingBottom: insets.bottom + 2 }]}>
+                <TouchableOpacity style={[s.navBtn, currentIndex === 0 && s.navBtnOff]}
+                  onPress={() => goTo(currentIndex - 1)} disabled={currentIndex === 0}>
+                  <Text style={[s.navBtnTxt, currentIndex === 0 && s.navBtnTxtOff]}>‹ Prev</Text>
+                </TouchableOpacity>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.dotsRow}>
+                  {slides.map((_, i) => (
+                    <TouchableOpacity key={i} onPress={() => goTo(i)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+                      <View style={[s.dot, i === currentIndex && s.dotActive]} />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <TouchableOpacity style={[s.navBtn, currentIndex === slides.length - 1 && s.navBtnOff]}
+                  onPress={() => goTo(currentIndex + 1)} disabled={currentIndex === slides.length - 1}>
+                  <Text style={[s.navBtnTxt, currentIndex === slides.length - 1 && s.navBtnTxtOff]}>Next ›</Text>
                 </TouchableOpacity>
               </View>
-              <ProgressChips />
-              <AutoPlayRow compact />
             </View>
-            <View style={s.rightDivider} />
-            <ScrollView style={s.transcriptPanel} showsVerticalScrollIndicator={false}
-              contentContainerStyle={s.transcriptPanelContent}>
-              <Text style={s.transcriptPanelLabel}>TRANSCRIPT</Text>
-              {transcript
-                ? <Text style={s.transcriptPanelTxt}>{transcript}</Text>
-                : <Text style={s.transcriptPanelEmpty}>No transcript for {locale.toUpperCase()}</Text>}
-            </ScrollView>
-            <View style={[s.navBarLandscape, { paddingBottom: insets.bottom + 2 }]}>
-              <TouchableOpacity style={[s.navBtn, currentIndex === 0 && s.navBtnOff]}
-                onPress={() => goTo(currentIndex - 1)} disabled={currentIndex === 0}>
-                <Text style={[s.navBtnTxt, currentIndex === 0 && s.navBtnTxtOff]}>‹ Prev</Text>
-              </TouchableOpacity>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.dotsRow}>
-                {slides.map((_, i) => (
-                  <TouchableOpacity key={i} onPress={() => goTo(i)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
-                    <View style={[s.dot, i === currentIndex && s.dotActive]} />
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-              <TouchableOpacity style={[s.navBtn, currentIndex === slides.length - 1 && s.navBtnOff]}
-                onPress={() => goTo(currentIndex + 1)} disabled={currentIndex === slides.length - 1}>
-                <Text style={[s.navBtnTxt, currentIndex === slides.length - 1 && s.navBtnTxtOff]}>Next ›</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          )}
         </View>
         {fsModal}
         {chatModal}
@@ -845,9 +855,10 @@ const s = StyleSheet.create({
   lPillActive:          { backgroundColor: '#fff' },
   lPillTxt:             { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.9)' },
   lPillTxtActive:       { color: '#6366f1' },
-  transcriptIconBtn:    { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.15)' },
-  transcriptIconActive: { backgroundColor: '#fff' },
-  transcriptIconTxt:    { fontSize: 15 },
+  headerPlayBtn:        { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.15)' },
+  headerPlayActive:     { backgroundColor: '#fff' },
+  headerPlayIcon:       { fontSize: 13, color: '#fff' },
+  headerPlayIconActive: { color: '#6366f1' },
 
   // ── Slide image ───────────────────────────────────────────────────────────────
   imgWrap:         { backgroundColor: '#1e1b4b', overflow: 'hidden' },
@@ -858,6 +869,8 @@ const s = StyleSheet.create({
   debugUrl:        { color: '#818cf8', fontSize: 10, textAlign: 'center', paddingHorizontal: 20 },
   counterOverlay:  { position: 'absolute', top: 10, right: 12, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   counterTxt:      { color: '#fff', fontSize: 12, fontWeight: '700' },
+  collapseToggleBtn: { position: 'absolute', top: 10, left: 12, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
+  collapseToggleTxt: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
   // ── Audio bar ─────────────────────────────────────────────────────────────────
   audioBarOverlay: {
