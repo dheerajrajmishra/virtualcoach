@@ -182,11 +182,14 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     if (playFlashTimer.current) clearTimeout(playFlashTimer.current);
   }, []);
 
-  const fsPanResponder = useRef(
+  const swipeResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, g) =>
-        Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onMoveShouldSetPanResponder: (evt, g) => {
+        // Ignore multi-touch (pinch-to-zoom)
+        if (evt.nativeEvent.touches.length > 1) return false;
+        return Math.abs(g.dx) > 15 && Math.abs(g.dx) > Math.abs(g.dy) * 1.8;
+      },
       onPanResponderRelease: (_, g) => {
         const fastSwipe = Math.abs(g.vx) > 0.4;
         const bigSwipe  = Math.abs(g.dx) > 55;
@@ -351,60 +354,61 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     </View>
   );
 
-  // ── Reusable audio track ───────────────────────────────────────────────────
-  const AudioTrack = ({ onInteract }: { onInteract?: () => void }) => (
-    <View style={s.trackWrap}>
-      {audioError ? <Text style={s.audioErrTxt} numberOfLines={1}>{audioError}</Text> : (
-        <>
-          <View style={s.track}>
-            <View style={[s.trackFill, { width: `${Math.min(progress * 100, 100)}%` as any }]} />
-            <View style={[s.thumb, { left: `${Math.min(progress * 100, 98)}%` as any }]} />
-          </View>
-          <View style={s.seekStrip}>
-            {[0, 0.2, 0.4, 0.6, 0.8, 1].map(p => (
-              <TouchableOpacity key={p} style={s.seekZone}
-                onPress={() => { seekTo(p); onInteract?.(); }} />
-            ))}
-          </View>
-          <View style={s.timesRow}>
-            <Text style={s.timeTxt}>{fmt(positionMs)}</Text>
-            <Text style={s.timeTxt}>{fmt(durationMs)}</Text>
-          </View>
-        </>
-      )}
-    </View>
+  // ── AI Coach FAQ Button (Consistent across all stages) ─────────────────────
+  const AskAIBtn = ({ style, onPress, compact = false }: { style?: any, onPress?: () => void, compact?: boolean }) => (
+    <TouchableOpacity
+      style={[s.askAiBtn, compact && s.askAiBtnCompact, style]}
+      onPress={onPress || (() => setShowChat(true))}
+      activeOpacity={0.85}>
+      <Text style={[s.askAiIcon, compact && s.askAiIconCompact]}>🤖</Text>
+      <Text style={[s.askAiLabel, compact && s.askAiLabelCompact]}>Ask AI</Text>
+    </TouchableOpacity>
   );
 
-  const AudioBar = ({ onFullscreen }: { onFullscreen?: () => void }) => (
-    <View style={s.audioBarOverlay}>
-      <TouchableOpacity style={s.playBtn} onPress={togglePlay} disabled={audioLoading || !audioUrl}>
-        {audioLoading
-          ? <ActivityIndicator color="#fff" size="small" />
-          : <Text style={s.playIcon}>{!audioUrl ? '🔇' : isPlaying ? '⏸' : '▶'}</Text>}
-      </TouchableOpacity>
-      <AudioTrack />
-      {onFullscreen && (
-        <TouchableOpacity style={s.fsToggleBtn} onPress={onFullscreen} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <ExpandIcon size={18} color="#fff" />
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-
-  const SlideImage = ({ height }: { height: number }) => (
-    <View style={[s.imgWrap, { width: isLandscape ? (rightPanelCollapsed ? W : W * 0.56) : W, height }]}>
-      {imageUrl && !imageError ? (
-        <Image source={{ uri: imageUrl }} style={s.img} resizeMode="contain"
-          onError={() => setImageError(true)} />
-      ) : (
-        <View style={s.imgFallback}>
-          <Text style={s.imgFallbackIcon}>🖼</Text>
-          <Text style={s.imgFallbackTxt}>{imageError ? 'Could not load image' : 'No image'}</Text>
-          {imageError && imageUrl ? <Text style={s.debugUrl} numberOfLines={2}>{imageUrl}</Text> : null}
-        </View>
-      )}
+  const SlideImage = ({ height }: { height?: number }) => (
+    <View style={[s.imgWrap, { width: isLandscape ? (rightPanelCollapsed ? W : W * 0.56) : W }, height ? { height } : { flex: 1 }]}
+      {...swipeResponder.panHandlers}>
+      <ScrollView
+        maximumZoomScale={5}
+        minimumZoomScale={1}
+        showsHorizontalScrollIndicator={false}
+        showsVerticalScrollIndicator={false}
+        centerContent={true}
+        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+      >
+        {imageUrl && !imageError ? (
+          <Image source={{ uri: imageUrl }} 
+            style={{ 
+              width: isLandscape ? (rightPanelCollapsed ? W : W * 0.56) : W, 
+              height: height ?? (isLandscape ? H : H * 0.6) 
+            }} 
+            resizeMode="contain"
+            onError={() => setImageError(true)} />
+        ) : (
+          <View style={[s.imgFallback, { width: W, height: height ?? 250 }]}>
+            <Text style={s.imgFallbackIcon}>🖼</Text>
+            <Text style={s.imgFallbackTxt}>{imageError ? 'Could not load image' : 'No image'}</Text>
+            {imageError && imageUrl ? <Text style={s.debugUrl} numberOfLines={2}>{imageUrl}</Text> : null}
+          </View>
+        )}
+      </ScrollView>
       <View style={s.counterOverlay}>
+        {!isLandscape && (
+          <TouchableOpacity style={s.transcriptIconBtnOverlay} onPress={() => setShowBottomTranscript(o => !o)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Text style={s.transcriptIconTxtOverlay}>📝</Text>
+          </TouchableOpacity>
+        )}
+        <View style={s.autoPlayMiniWrapper}>
+          <Text style={s.autoPlayMiniLabel}>AUTO</Text>
+          <TouchableOpacity style={[s.toggleMini, autoPlay && s.toggleMiniOn]}
+            onPress={() => { if (autoPlay) cancelAutoAdvance(); setAutoPlay(o => !o); }} activeOpacity={0.8}>
+            <View style={[s.toggleThumbMini, autoPlay && s.toggleThumbMiniOn]} />
+          </TouchableOpacity>
+        </View>
         <Text style={s.counterTxt}>{currentIndex + 1} / {slides.length}</Text>
+        <TouchableOpacity style={s.fsIconBtn} onPress={enterFullscreen} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <ExpandIcon size={14} color="#fff" />
+        </TouchableOpacity>
       </View>
       {isLandscape && (
         <TouchableOpacity style={s.collapseToggleBtn} onPress={() => setRightPanelCollapsed(!rightPanelCollapsed)}>
@@ -419,12 +423,13 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
           </Text>
         </ScrollView>
       )}
-      <AudioBar onFullscreen={enterFullscreen} />
+      {!isLandscape && <NavBar />}
     </View>
   );
 
+
   const NavBar = () => (
-    <View style={[s.navBar, { paddingBottom: insets.bottom + 2 }]}>
+    <View style={[s.navBar, { bottom: showBottomTranscript ? 16 : insets.bottom + 16 }]}>
       <TouchableOpacity style={[s.navBtn, currentIndex === 0 && s.navBtnOff]}
         onPress={() => goTo(currentIndex - 1)} disabled={currentIndex === 0}>
         <Text style={[s.navBtnTxt, currentIndex === 0 && s.navBtnTxtOff]}>‹ Prev</Text>
@@ -443,36 +448,9 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     </View>
   );
 
-  const ProgressChips = () => (
-    <>
-      <View style={s.progressRow}>
-        <View style={s.progressTrack}>
-          <View style={[s.progressFill, { width: `${Math.round(slideProgress * 100)}%` as any }]} />
-        </View>
-        <Text style={s.progressLabel}>{Math.round(slideProgress * 100)}%</Text>
-      </View>
-      <View style={s.chipsRow}>
-        {training.category ? <View style={s.chip}><Text style={s.chipTxt}>{training.category}</Text></View> : null}
-        {training.product ? <View style={[s.chip, s.chipAlt]}><Text style={[s.chipTxt, s.chipTxtAlt]}>{training.product}</Text></View> : null}
-      </View>
-    </>
-  );
 
-  const AutoPlayRow = ({ compact = false }) => (
-    <View style={[s.autoPlayRow, compact && s.autoPlayRowCompact]}>
-      <View style={s.autoPlayLeft}>
-        {!compact && <Text style={s.autoPlayRowIcon}>▶▶</Text>}
-        <View>
-          <Text style={s.autoPlayLabel}>Auto-advance{compact ? '' : ' slides'}</Text>
-          {!compact && <Text style={s.autoPlayDesc}>Move to next slide when audio finishes</Text>}
-        </View>
-      </View>
-      <TouchableOpacity style={[s.toggle, autoPlay && s.toggleOn]}
-        onPress={() => { if (autoPlay) cancelAutoAdvance(); setAutoPlay(o => !o); }} activeOpacity={0.8}>
-        <View style={[s.toggleThumb, autoPlay && s.toggleThumbOn]} />
-      </TouchableOpacity>
-    </View>
-  );
+
+
 
   const Header = ({ compact = false }) => (
     <View style={[
@@ -483,7 +461,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
       <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
         <Text style={s.backArrow}>←</Text>
       </TouchableOpacity>
-      <Text style={s.headerTitle} numberOfLines={1}>{training.name}</Text>
+      <Text style={s.headerTitle} numberOfLines={1}>{slide?.title || training.name}</Text>
       <View style={s.localePillsWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.localePillsContent}>
           {(training.supportedLocales ?? []).map(l => (
@@ -511,7 +489,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
       statusBarTranslucent
       onRequestClose={exitFullscreen}>
 
-      <View style={s.fsRoot} {...fsPanResponder.panHandlers}>
+      <View style={s.fsRoot} {...swipeResponder.panHandlers}>
         <View style={[StyleSheet.absoluteFill, s.fsBg]} />
 
         {imageUrl && !imageError ? (
@@ -604,13 +582,11 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
             ))}
           </View>
 
-          {/* FAQ floating button */}
-          <TouchableOpacity
-            style={[s.fsFaqBtn, { bottom: insets.bottom + 80, right: insets.right + 16 }]}
-            onPress={() => { setShowChat(true); showFsControlsAndScheduleHide(); }}>
-            <Text style={s.fsFaqIcon}>❓</Text>
-            <Text style={s.fsFaqLabel}>FAQ</Text>
-          </TouchableOpacity>
+          {/* FAQ Button */}
+          <AskAIBtn
+            style={{ position: 'absolute', bottom: insets.bottom + 80, right: insets.right + 16 }}
+            onPress={() => { setShowChat(true); showFsControlsAndScheduleHide(); }}
+          />
 
           {/* Bottom audio bar — AudioTrack inlined to avoid sub-component remount */}
           <View style={[s.fsBottomBar, { paddingBottom: insets.bottom + 12, paddingHorizontal: insets.left + 14 }]}
@@ -646,12 +622,10 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     </Modal>
   );
 
-  // ── AI Coach FAB ───────────────────────────────────────────────────────────
+
+
   const fab = (
-    <TouchableOpacity style={[s.fab, { bottom: insets.bottom + 72 }]}
-      onPress={() => setShowChat(true)} activeOpacity={0.85}>
-      <Text style={s.fabIcon}>🤖</Text>
-    </TouchableOpacity>
+    <AskAIBtn style={{ position: 'absolute', right: 16, bottom: insets.bottom + 72 }} />
   );
 
   // ── Chat / FAQ modal (Minimalist Redesign) ───────────────────────────────
@@ -736,13 +710,8 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
                   {slide?.title
                     ? <Text style={s.slideTitleLandscape} numberOfLines={2}>{slide.title}</Text>
                     : <View style={{ flex: 1 }} />}
-                  <TouchableOpacity style={s.aiBtn} onPress={() => setShowChat(true)}>
-                    <Text style={s.aiBtnIcon}>🤖</Text>
-                    <Text style={s.aiBtnTxt}>Ask AI</Text>
-                  </TouchableOpacity>
+                  <AskAIBtn compact />
                 </View>
-                <ProgressChips />
-                <AutoPlayRow compact />
               </View>
               <View style={s.rightDivider} />
               <ScrollView style={s.transcriptPanel} showsVerticalScrollIndicator={false}
@@ -784,17 +753,10 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   return (
     <View style={s.root}>
       <Header />
-      <SlideImage height={Math.round(H * 0.45)} />
-      <View style={s.infoPanel}>
-        {slide?.title ? <Text style={s.slideTitle} numberOfLines={2}>{slide.title}</Text> : null}
-        <ProgressChips />
-      </View>
-      <NavBar />
+      <SlideImage />
 
-      <ScrollView style={s.bottomSection}
-        contentContainerStyle={[s.bottomContent, { paddingBottom: insets.bottom + 12 }]}
-        showsVerticalScrollIndicator={false}>
-        {autoAdvanceSec !== null && (
+      {autoAdvanceSec !== null && (
+        <View style={s.countdownFloat}>
           <TouchableOpacity style={s.countdownBanner} onPress={cancelAutoAdvance} activeOpacity={0.85}>
             <View style={s.countdownBar}>
               <View style={[s.countdownFill, { width: `${((3 - autoAdvanceSec) / 3) * 100}%` as any }]} />
@@ -804,24 +766,25 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
               <View style={s.countdownCancelChip}><Text style={s.countdownCancelTxt}>Cancel</Text></View>
             </View>
           </TouchableOpacity>
-        )}
-        <AutoPlayRow />
-        <View style={s.bottomDivider} />
-        <TouchableOpacity style={s.transcriptToggleRow}
-          onPress={() => setShowBottomTranscript(o => !o)} activeOpacity={0.7}>
-          <Text style={s.transcriptSectionLabel}>TRANSCRIPT</Text>
-          <View style={s.transcriptTogglePill}>
-            <Text style={s.transcriptTogglePillTxt}>{showBottomTranscript ? 'Hide ▲' : 'Show ▼'}</Text>
-          </View>
-        </TouchableOpacity>
-        {showBottomTranscript
-          ? (transcript
-              ? <Text style={s.transcriptFullTxt}>{transcript}</Text>
-              : <Text style={s.noTranscriptTxt}>No transcript for {locale.toUpperCase()}</Text>)
-          : (transcript
-              ? <Text style={s.transcriptPreviewTxt} numberOfLines={2}>{transcript}</Text>
-              : <Text style={s.noTranscriptTxt}>No transcript for {locale.toUpperCase()}</Text>)}
-      </ScrollView>
+        </View>
+      )}
+
+      {showBottomTranscript && (
+        <View style={[s.bottomSection, { flex: 0, maxHeight: H * 0.4 }]}>
+          <ScrollView contentContainerStyle={[s.bottomContent, { paddingBottom: insets.bottom + 12 }]} showsVerticalScrollIndicator={false}>
+            <TouchableOpacity style={s.transcriptToggleRow}
+              onPress={() => setShowBottomTranscript(false)} activeOpacity={0.7}>
+              <Text style={s.transcriptSectionLabel}>TRANSCRIPT</Text>
+              <View style={s.transcriptTogglePill}>
+                <Text style={s.transcriptTogglePillTxt}>Hide ▲</Text>
+              </View>
+            </TouchableOpacity>
+            <Text style={s.transcriptFullTxt}>
+              {transcript ?? `No transcript for ${locale.toUpperCase()}`}
+            </Text>
+          </ScrollView>
+        </View>
+      )}
 
       {fab}
       {fsModal}
@@ -867,8 +830,17 @@ const s = StyleSheet.create({
   imgFallbackIcon: { fontSize: 38 },
   imgFallbackTxt:  { color: '#c7d2fe', fontSize: 14 },
   debugUrl:        { color: '#818cf8', fontSize: 10, textAlign: 'center', paddingHorizontal: 20 },
-  counterOverlay:  { position: 'absolute', top: 10, right: 12, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  counterOverlay:  { position: 'absolute', top: 10, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 10 },
   counterTxt:      { color: '#fff', fontSize: 12, fontWeight: '700' },
+  transcriptIconBtnOverlay: { paddingHorizontal: 6, borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.2)', paddingRight: 8, marginRight: 2 },
+  transcriptIconTxtOverlay: { fontSize: 13 },
+  fsIconBtn:       { paddingHorizontal: 4 },
+  autoPlayMiniWrapper: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 8, borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.2)' },
+  autoPlayMiniLabel: { color: '#fff', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  toggleMini: { width: 30, height: 16, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', padding: 2 },
+  toggleMiniOn: { backgroundColor: '#6366f1' },
+  toggleThumbMini: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff' },
+  toggleThumbMiniOn: { alignSelf: 'flex-end' },
   collapseToggleBtn: { position: 'absolute', top: 10, left: 12, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
   collapseToggleTxt: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
@@ -942,10 +914,7 @@ const s = StyleSheet.create({
   fsDot:       { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.35)' },
   fsDotActive: { width: 20, height: 6, backgroundColor: '#fff', borderRadius: 3 },
 
-  // FAQ floating button (fullscreen)
-  fsFaqBtn:   { position: 'absolute', width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(99,102,241,0.90)', alignItems: 'center', justifyContent: 'center', gap: 1, shadowColor: '#6366f1', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.6, shadowRadius: 8, elevation: 10 },
-  fsFaqIcon:  { fontSize: 20 },
-  fsFaqLabel: { fontSize: 8, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
+  // FAQ button is now standardized via askAiBtn style
 
   // Bottom audio bar
   fsBottomBar: {
@@ -970,7 +939,7 @@ const s = StyleSheet.create({
   chipTxtAlt:    { color: '#6ee7b7' },
 
   // ── Nav bar ───────────────────────────────────────────────────────────────────
-  navBar:       { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111827', borderTopWidth: 1, borderTopColor: '#1f2937', paddingHorizontal: 12, paddingTop: 6 },
+  navBar:       { position: 'absolute', bottom: 16, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', backgroundColor: 'transparent' },
   navBtn:       { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#6366f1', borderRadius: 10 },
   navBtnOff:    { backgroundColor: '#1f2937' },
   navBtnTxt:    { color: '#fff', fontWeight: '700', fontSize: 13 },
@@ -982,7 +951,8 @@ const s = StyleSheet.create({
   // ── Bottom section ────────────────────────────────────────────────────────────
   bottomSection:           { flex: 1, backgroundColor: '#0d1420' },
   bottomContent:           { paddingHorizontal: 16, paddingTop: 10, gap: 4 },
-  countdownBanner:         { backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(99,102,241,0.4)', overflow: 'hidden' },
+  countdownBanner:         { backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(99,102,241,0.3)', shadowColor: '#6366f1', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 5 },
+  countdownFloat:          { position: 'absolute', bottom: 16, left: 16, right: 16, zIndex: 50 },
   countdownBar:            { height: 3, backgroundColor: '#2d3748' },
   countdownFill:           { position: 'absolute', top: 0, left: 0, bottom: 0, backgroundColor: '#6366f1' },
   countdownRow:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10 },
@@ -1007,10 +977,20 @@ const s = StyleSheet.create({
   transcriptFullTxt:       { fontSize: 14, color: '#94a3b8', lineHeight: 22 },
   transcriptPreviewTxt:    { fontSize: 13, color: '#475569', lineHeight: 20 },
   noTranscriptTxt:         { fontSize: 12, color: '#374151', fontStyle: 'italic' },
+  addonsToggleRow:         { paddingVertical: 12, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, marginBottom: 12 },
+  addonsToggleTxt:         { fontSize: 13, fontWeight: '700', color: '#a5b4fc' },
 
-  // ── FAB ───────────────────────────────────────────────────────────────────────
-  fab:     { position: 'absolute', right: 16, width: 54, height: 54, borderRadius: 27, backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center', shadowColor: '#6366f1', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.6, shadowRadius: 8, elevation: 12 },
-  fabIcon: { fontSize: 24 },
+  askAiBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 25,
+    backgroundColor: '#6366f1',
+    shadowColor: '#6366f1', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 8
+  },
+  askAiBtnCompact: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+  askAiIcon:       { fontSize: 18 },
+  askAiIconCompact: { fontSize: 15 },
+  askAiLabel:      { fontSize: 13, fontWeight: '700', color: '#fff' },
+  askAiLabelCompact: { fontSize: 11 },
 
   // ── Landscape ─────────────────────────────────────────────────────────────────
   landscapeBody:          { flex: 1, flexDirection: 'row' },
