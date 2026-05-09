@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio, AVPlaybackStatus } from 'expo-av';
-import { fetchSlides, resolveMediaUrl, Slide, Training } from '../api';
+import { fetchSlides, resolveMediaUrl, askFaq, Slide, Training } from '../api';
 
 if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
 
@@ -16,7 +16,6 @@ function fmt(ms: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-// Four-corner expand icon (renders cleanly on all devices)
 function ExpandIcon({ size, color }: { size: number; color: string }) {
   const arm = Math.round(size * 0.42);
   const t = 2;
@@ -31,7 +30,6 @@ function ExpandIcon({ size, color }: { size: number; color: string }) {
   );
 }
 
-// Four-corner compress icon (for "exit fullscreen")
 function CompressIcon({ size, color }: { size: number; color: string }) {
   const arm = Math.round(size * 0.38);
   const t = 2;
@@ -56,7 +54,6 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   const isLandscape = W > H;
   const chatScrollRef = useRef<ScrollView>(null);
 
-  // ── Slide / playback ───────────────────────────────────────────────────────
   const [slides, setSlides]                 = useState<Slide[]>([]);
   const [loadingSlides, setLoadingSlides]   = useState(true);
   const [slideError, setSlideError]         = useState<string | null>(null);
@@ -72,48 +69,42 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   const [audioLoading, setAudioLoading] = useState(false);
   const [audioError, setAudioError]     = useState<string | null>(null);
 
-  // ── Auto-play ──────────────────────────────────────────────────────────────
   const [autoPlay, setAutoPlay]             = useState(false);
   const [autoAdvanceSec, setAutoAdvanceSec] = useState<number | null>(null);
   const autoPlayRef                         = useRef(false);
   const autoAdvanceTimer                    = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => { autoPlayRef.current = autoPlay; }, [autoPlay]);
 
-  // ── Fullscreen ─────────────────────────────────────────────────────────────
-  const [isFullscreen, setIsFullscreen]       = useState(false);
-  const [showFsControls, setShowFsControls]   = useState(true);
-  const [showPlayFlash, setShowPlayFlash]     = useState(false);  // center tap indicator
-  const fsControlsTimer                       = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const playFlashTimer                        = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Refs so PanResponder (created once) always reads latest values
-  const currentIndexRef                       = useRef(0);
-  const slidesLenRef                          = useRef(0);
+  const [isFullscreen, setIsFullscreen]     = useState(false);
+  const [showFsControls, setShowFsControls] = useState(true);
+  const [showPlayFlash, setShowPlayFlash]   = useState(false);
+  const [showFsLangPicker, setShowFsLangPicker] = useState(false);
+  const fsControlsTimer                     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playFlashTimer                      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentIndexRef                     = useRef(0);
+  const slidesLenRef                        = useRef(0);
   useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
   useEffect(() => { slidesLenRef.current = slides.length; }, [slides.length]);
 
-  // Hide/restore status bar imperatively — avoids the <StatusBar> JSX flash
   useEffect(() => {
     StatusBar.setHidden(isFullscreen, 'fade');
     return () => { if (isFullscreen) StatusBar.setHidden(false, 'none'); };
   }, [isFullscreen]);
 
-  // ── Inline transcript toggle ───────────────────────────────────────────────
   const [showBottomTranscript, setShowBottomTranscript] = useState(false);
 
-  // ── Chat ───────────────────────────────────────────────────────────────────
   const [showChat, setShowChat]         = useState(false);
   const [chatInput, setChatInput]       = useState('');
   const [chatLoading, setChatLoading]   = useState(false);
   const [chatMode, setChatMode]         = useState<'text' | 'voice' | 'video'>('text');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([{
     id: '0', role: 'assistant',
-    text: `Hi! I'm your AI Coach for "${training.name}". Ask me anything — by text, voice, or video!`,
+    text: `Hi! I'm your AI Coach for "${training.name}". Ask me anything about this training!`,
   }]);
 
   const slide         = slides[currentIndex];
   const slideProgress = slides.length > 0 ? (currentIndex + 1) / slides.length : 0;
 
-  // ── Load slides ────────────────────────────────────────────────────────────
   useEffect(() => {
     setLoadingSlides(true);
     fetchSlides(training.id)
@@ -122,7 +113,6 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
       .finally(() => setLoadingSlides(false));
   }, [training.id]);
 
-  // ── Load audio ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const url = resolveMediaUrl(slides[currentIndex]?.audioUrls?.[locale]);
     let cancelled = false;
@@ -183,16 +173,12 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     };
   }, [currentIndex, locale, slides]);
 
-  // Cleanup timers on unmount
   useEffect(() => () => {
     if (autoAdvanceTimer.current) clearInterval(autoAdvanceTimer.current);
     if (fsControlsTimer.current) clearTimeout(fsControlsTimer.current);
     if (playFlashTimer.current) clearTimeout(playFlashTimer.current);
   }, []);
 
-  // ── Fullscreen pan responder ───────────────────────────────────────────────
-  // onStartShouldSetPanResponder: false  → taps fall through to TouchableOpacity
-  // onMoveShouldSetPanResponder: true    → steals horizontal swipes from TouchableOpacity
   const fsPanResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
@@ -202,13 +188,11 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
         const fastSwipe = Math.abs(g.vx) > 0.4;
         const bigSwipe  = Math.abs(g.dx) > 55;
         if (g.dx > 0 && (fastSwipe || bigSwipe)) {
-          // swipe right → previous
           if (autoAdvanceTimer.current) { clearInterval(autoAdvanceTimer.current); autoAdvanceTimer.current = null; }
           setAutoAdvanceSec(null);
           setShowTranscript(false);
           setCurrentIndex(prev => Math.max(0, prev - 1));
         } else if (g.dx < 0 && (fastSwipe || bigSwipe)) {
-          // swipe left → next
           if (autoAdvanceTimer.current) { clearInterval(autoAdvanceTimer.current); autoAdvanceTimer.current = null; }
           setAutoAdvanceSec(null);
           setShowTranscript(false);
@@ -218,7 +202,6 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     })
   ).current;
 
-  // ── Handlers ───────────────────────────────────────────────────────────────
   function cancelAutoAdvance() {
     if (autoAdvanceTimer.current) { clearInterval(autoAdvanceTimer.current); autoAdvanceTimer.current = null; }
     setAutoAdvanceSec(null);
@@ -230,13 +213,17 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     fsControlsTimer.current = setTimeout(() => setShowFsControls(false), 3000);
   }
 
-  // Tap inside fullscreen: play/pause + brief center icon flash + show controls
   function handleFsTap() {
     togglePlay();
     setShowPlayFlash(true);
     if (playFlashTimer.current) clearTimeout(playFlashTimer.current);
     playFlashTimer.current = setTimeout(() => setShowPlayFlash(false), 650);
     showFsControlsAndScheduleHide();
+  }
+
+  function exitFullscreen() {
+    setIsFullscreen(false);
+    setShowFsLangPicker(false);
   }
 
   function enterFullscreen() {
@@ -267,23 +254,29 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     setShowTranscript(o => !o);
   }
 
-  function sendChatMessage() {
-    const text = chatInput.trim();
+  async function sendChatMessage(overrideText?: string) {
+    const text = (overrideText ?? chatInput).trim();
     if (!text) return;
     setChatMessages(prev => [...prev, { id: `u${Date.now()}`, role: 'user', text }]);
-    setChatInput('');
+    if (!overrideText) setChatInput('');
     setChatLoading(true);
-    setTimeout(() => {
-      const pool = [
-        `Great question! Slide ${currentIndex + 1} covers key aspects of ${training.category}. Would you like me to go deeper?`,
-        `This is a core concept in ${training.product} training. Try the transcript for more context on this slide.`,
-        `In ${training.category}, this builds on earlier concepts. You're ${Math.round(slideProgress * 100)}% through — keep it up!`,
-        `For ${training.product}, understanding this section is critical. Want a quiz or summary?`,
-      ];
-      setChatMessages(prev => [...prev, { id: `a${Date.now()}`, role: 'assistant', text: pool[Math.floor(Math.random() * pool.length)] }]);
+    try {
+      const result = await askFaq(training.id, {
+        question: text,
+        locale,
+        slideIndex: currentIndex,
+      });
+      setChatMessages(prev => [...prev, { id: `a${Date.now()}`, role: 'assistant', text: result.answer }]);
+    } catch {
+      setChatMessages(prev => [...prev, {
+        id: `a${Date.now()}`,
+        role: 'assistant',
+        text: "Sorry, I couldn't reach the AI Coach right now. Please try again shortly.",
+      }]);
+    } finally {
       setChatLoading(false);
       setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 80);
-    }, 900 + Math.random() * 700);
+    }
   }
 
   const audioUrl   = resolveMediaUrl(slide?.audioUrls?.[locale]);
@@ -291,7 +284,6 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   const transcript = slide?.transcripts?.[locale];
   const progress   = durationMs > 0 ? positionMs / durationMs : 0;
 
-  // ── Loading / error ────────────────────────────────────────────────────────
   if (loadingSlides) return (
     <View style={[s.center, { paddingTop: insets.top }]}>
       <ActivityIndicator size="large" color="#6366f1" /><Text style={s.hint}>Loading slides…</Text>
@@ -304,9 +296,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     </View>
   );
 
-  // ── Sub-components ─────────────────────────────────────────────────────────
-
-  // Reusable audio track (used in both normal and fullscreen)
+  // ── Reusable audio track ───────────────────────────────────────────────────
   const AudioTrack = ({ onInteract }: { onInteract?: () => void }) => (
     <View style={s.trackWrap}>
       {audioError ? <Text style={s.audioErrTxt} numberOfLines={1}>{audioError}</Text> : (
@@ -451,24 +441,17 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     </View>
   );
 
-  // ── FULLSCREEN MODAL ──────────────────────────────────────────────────────
-  // JSX variable (not a sub-component) so React reconciles by stable element
-  // types (Modal, View, …) instead of remounting the whole tree every 250 ms
-  // when positionMs ticks. AudioTrack is inlined for the same reason.
+  // ── FULLSCREEN MODAL ───────────────────────────────────────────────────────
   const fsModal = (
     <Modal
       visible={isFullscreen}
       animationType="fade"
       statusBarTranslucent
-      onRequestClose={() => setIsFullscreen(false)}>
+      onRequestClose={exitFullscreen}>
 
-      {/* Root captures swipe gestures (only horizontal moves, not taps) */}
       <View style={s.fsRoot} {...fsPanResponder.panHandlers}>
-
-        {/* Black background */}
         <View style={[StyleSheet.absoluteFill, s.fsBg]} />
 
-        {/* Slide image */}
         {imageUrl && !imageError ? (
           <Image source={{ uri: imageUrl }} style={[StyleSheet.absoluteFill, s.fsImg]}
             resizeMode="contain" onError={() => setImageError(true)} />
@@ -481,13 +464,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
           </View>
         )}
 
-        {/* Full-area tap target — play/pause + brief center icon flash */}
-        <TouchableOpacity
-          style={StyleSheet.absoluteFill}
-          activeOpacity={1}
-          onPress={handleFsTap}>
-
-          {/* Center flash — shown only for 650 ms after each tap */}
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={handleFsTap}>
           {showPlayFlash && (
             <View style={s.fsCenterIndicator} pointerEvents="none">
               <View style={s.fsCenterCircle}>
@@ -499,24 +476,54 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
           )}
         </TouchableOpacity>
 
-        {/* Controls overlay — always mounted, opacity-driven so no remount flicker */}
+        {/* Controls overlay — opacity-driven, no remount */}
         <View
           style={[StyleSheet.absoluteFill, { opacity: showFsControls ? 1 : 0 }]}
           pointerEvents={showFsControls ? 'box-none' : 'none'}>
 
-          {/* Top bar: counter + title + exit */}
+          {/* Top bar */}
           <View style={[s.fsTopBar, { paddingTop: insets.top + 10, paddingHorizontal: insets.left + 16 }]}
             pointerEvents="box-none">
             <View style={s.fsCounterBadge}>
               <Text style={s.fsCounterTxt}>{currentIndex + 1} / {slides.length}</Text>
             </View>
             <Text style={s.fsTitleTxt} numberOfLines={1}>{slide?.title ?? training.name}</Text>
-            <TouchableOpacity style={s.fsExitBtn} onPress={() => setIsFullscreen(false)}>
+
+            {/* Language switcher button */}
+            {(training.supportedLocales ?? []).length > 1 && (
+              <TouchableOpacity
+                style={[s.fsLangBtn, showFsLangPicker && s.fsLangBtnActive]}
+                onPress={() => { setShowFsLangPicker(o => !o); showFsControlsAndScheduleHide(); }}>
+                <Text style={s.fsLangBtnIcon}>🌐</Text>
+                <Text style={s.fsLangBtnTxt}>{locale.toUpperCase()}</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity style={s.fsExitBtn} onPress={exitFullscreen}>
               <CompressIcon size={18} color="#fff" />
             </TouchableOpacity>
           </View>
 
-          {/* Left / Right swipe arrow hints */}
+          {/* Language picker panel */}
+          {showFsLangPicker && (
+            <View style={[s.fsLangPicker, { top: insets.top + 60 }]}>
+              <Text style={s.fsLangPickerLabel}>AUDIO LANGUAGE</Text>
+              <View style={s.fsLangPillRow}>
+                {(training.supportedLocales ?? []).map(l => (
+                  <TouchableOpacity key={l}
+                    style={[s.fsLangPill, locale === l && s.fsLangPillActive]}
+                    onPress={() => { setLocale(l); setShowFsLangPicker(false); showFsControlsAndScheduleHide(); }}>
+                    <Text style={[s.fsLangPillTxt, locale === l && s.fsLangPillTxtActive]}>
+                      {l.toUpperCase()}
+                    </Text>
+                    {locale === l && <Text style={s.fsLangPillCheck}>✓</Text>}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Swipe hints */}
           {currentIndex > 0 && (
             <View style={s.fsPrevHint} pointerEvents="none">
               <Text style={s.fsNavArrow}>‹</Text>
@@ -528,14 +535,14 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
             </View>
           )}
 
-          {/* Slide dot indicator */}
+          {/* Slide dots */}
           <View style={s.fsDotsRow} pointerEvents="none">
             {slides.map((_, i) => (
               <View key={i} style={[s.fsDot, i === currentIndex && s.fsDotActive]} />
             ))}
           </View>
 
-          {/* FAQ / AI Coach floating button — bottom-right, above audio bar */}
+          {/* FAQ floating button */}
           <TouchableOpacity
             style={[s.fsFaqBtn, { bottom: insets.bottom + 80, right: insets.right + 16 }]}
             onPress={() => { setShowChat(true); showFsControlsAndScheduleHide(); }}>
@@ -543,7 +550,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
             <Text style={s.fsFaqLabel}>FAQ</Text>
           </TouchableOpacity>
 
-          {/* Bottom audio controls — AudioTrack inlined to avoid sub-component remount */}
+          {/* Bottom audio bar — AudioTrack inlined to avoid sub-component remount */}
           <View style={[s.fsBottomBar, { paddingBottom: insets.bottom + 12, paddingHorizontal: insets.left + 14 }]}
             pointerEvents="box-none">
             <TouchableOpacity style={s.fsPlayBtn} onPress={togglePlay} disabled={audioLoading || !audioUrl}>
@@ -577,7 +584,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     </Modal>
   );
 
-  // ── AI Coach FAB (JSX variable — prevents remount flicker) ──────────────────
+  // ── AI Coach FAB ───────────────────────────────────────────────────────────
   const fab = (
     <TouchableOpacity style={[s.fab, { bottom: insets.bottom + 72 }]}
       onPress={() => setShowChat(true)} activeOpacity={0.85}>
@@ -585,23 +592,41 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     </TouchableOpacity>
   );
 
-  // ── Chatbot modal (JSX variable — prevents remount flicker) ──────────────────
+  // ── Chat / FAQ modal (full redesign) ───────────────────────────────────────
   const chatModal = (
     <Modal visible={showChat} animationType="slide" transparent onRequestClose={() => setShowChat(false)}>
       <KeyboardAvoidingView style={s.chatOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={[s.chatSheet, { paddingBottom: insets.bottom + 8 }]}>
+
+          {/* Drag handle */}
+          <View style={s.chatHandleWrap}>
+            <View style={s.chatHandle} />
+          </View>
+
+          {/* Header */}
           <View style={s.chatHeader}>
-            <View style={s.chatHeaderLeft}>
+            <View style={s.chatAvatarWrap}>
               <View style={s.chatAvatar}><Text style={s.chatAvatarIcon}>🤖</Text></View>
-              <View>
-                <Text style={s.chatTitle}>AI Coach</Text>
-                <Text style={s.chatSubtitle}>Ask anything about this training</Text>
-              </View>
+              <View style={s.chatOnlineDot} />
+            </View>
+            <View style={s.chatHeaderInfo}>
+              <Text style={s.chatTitle}>AI Coach</Text>
+              <Text style={s.chatSubtitle}>● Online · Ready to help</Text>
             </View>
             <TouchableOpacity style={s.chatCloseBtn} onPress={() => setShowChat(false)}>
               <Text style={s.chatCloseTxt}>✕</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Context pill — always shows which slide we're asking about */}
+          <View style={s.chatContextBanner}>
+            <Text style={s.chatContextIcon}>📍</Text>
+            <Text style={s.chatContextTxt} numberOfLines={1}>
+              Slide {currentIndex + 1} · {slide?.title ?? training.name}
+            </Text>
+          </View>
+
+          {/* Mode tabs */}
           <View style={s.modeRow}>
             {(['text', 'voice', 'video'] as const).map(m => (
               <TouchableOpacity key={m} style={[s.modeBtn, chatMode === m && s.modeBtnActive]}
@@ -613,28 +638,58 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
               </TouchableOpacity>
             ))}
           </View>
+
+          {/* Quick FAQ chips — text mode only */}
+          {chatMode === 'text' && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}
+              style={s.faqChipsScroll} contentContainerStyle={s.faqChipsContent}>
+              {['Summarise slide', 'Quiz me', 'Explain simply', 'Key takeaways', 'Next steps'].map(q => (
+                <TouchableOpacity key={q} style={s.faqChip} onPress={() => sendChatMessage(q)}>
+                  <Text style={s.faqChipTxt}>{q}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+
+          {/* Messages */}
           <ScrollView ref={chatScrollRef} style={s.chatMessages} contentContainerStyle={s.chatMessagesContent}
             onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}>
             {chatMessages.map(msg => (
-              <View key={msg.id} style={[s.msgBubble, msg.role === 'user' ? s.msgUser : s.msgBot]}>
-                {msg.role === 'assistant' && <Text style={s.msgBotLabel}>AI COACH</Text>}
-                <Text style={[s.msgText, msg.role === 'user' ? s.msgTextUser : s.msgTextBot]}>{msg.text}</Text>
+              <View key={msg.id} style={[s.msgRow, msg.role === 'user' ? s.msgRowUser : s.msgRowBot]}>
+                {msg.role === 'assistant' && (
+                  <View style={s.msgBotAvatar}><Text style={s.msgBotAvatarTxt}>🤖</Text></View>
+                )}
+                <View style={[s.msgBubble, msg.role === 'user' ? s.msgUser : s.msgBot]}>
+                  {msg.role === 'assistant' && <Text style={s.msgBotLabel}>AI COACH</Text>}
+                  <Text style={[s.msgText, msg.role === 'user' ? s.msgTextUser : s.msgTextBot]}>
+                    {msg.text}
+                  </Text>
+                </View>
               </View>
             ))}
             {chatLoading && (
-              <View style={[s.msgBubble, s.msgBot]}>
-                <Text style={s.msgBotLabel}>AI COACH</Text>
-                <View style={s.typingRow}><ActivityIndicator size="small" color="#6366f1" /><Text style={s.typingTxt}>Thinking…</Text></View>
+              <View style={[s.msgRow, s.msgRowBot]}>
+                <View style={s.msgBotAvatar}><Text style={s.msgBotAvatarTxt}>🤖</Text></View>
+                <View style={[s.msgBubble, s.msgBot]}>
+                  <Text style={s.msgBotLabel}>AI COACH</Text>
+                  <View style={s.typingRow}>
+                    <ActivityIndicator size="small" color="#6366f1" />
+                    <Text style={s.typingTxt}>Thinking…</Text>
+                  </View>
+                </View>
               </View>
             )}
           </ScrollView>
+
+          {/* Input area */}
           {chatMode === 'text' ? (
             <View style={s.chatInputRow}>
               <TextInput style={s.chatInput} value={chatInput} onChangeText={setChatInput}
-                placeholder="Ask about this training…" placeholderTextColor="#6b7280"
-                multiline maxLength={500} returnKeyType="send" blurOnSubmit onSubmitEditing={sendChatMessage} />
+                placeholder="Ask anything about this slide…" placeholderTextColor="#4b5563"
+                multiline maxLength={500} returnKeyType="send" blurOnSubmit
+                onSubmitEditing={() => sendChatMessage()} />
               <TouchableOpacity style={[s.sendBtn, !chatInput.trim() && s.sendBtnOff]}
-                onPress={sendChatMessage} disabled={!chatInput.trim() || chatLoading}>
+                onPress={() => sendChatMessage()} disabled={!chatInput.trim() || chatLoading}>
                 <Text style={s.sendBtnTxt}>➤</Text>
               </TouchableOpacity>
             </View>
@@ -646,13 +701,14 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
               <Text style={s.altInputHint}>{chatMode === 'voice' ? 'Tap to ask by voice' : 'Tap to ask by video'}</Text>
             </View>
           )}
+
         </View>
       </KeyboardAvoidingView>
     </Modal>
   );
 
   // ══════════════════════════════════════════════════════════════════════════
-  // LANDSCAPE LAYOUT
+  // LANDSCAPE
   // ══════════════════════════════════════════════════════════════════════════
   if (isLandscape) {
     const imgH = H - insets.top - insets.bottom;
@@ -709,7 +765,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // PORTRAIT LAYOUT
+  // PORTRAIT
   // ══════════════════════════════════════════════════════════════════════════
   return (
     <View style={s.root}>
@@ -721,7 +777,6 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
       </View>
       <NavBar />
 
-      {/* Bottom section — fills dead space, scrollable */}
       <ScrollView style={s.bottomSection}
         contentContainerStyle={[s.bottomContent, { paddingBottom: insets.bottom + 12 }]}
         showsVerticalScrollIndicator={false}>
@@ -818,20 +873,18 @@ const s = StyleSheet.create({
   seekZone:     { flex: 1, height: '100%' },
   timesRow:     { flexDirection: 'row', justifyContent: 'space-between' },
   timeTxt:      { fontSize: 10, color: 'rgba(255,255,255,0.55)' },
-  // Fullscreen toggle button (in audio bar)
   fsToggleBtn:  { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
 
-  // ── Transcript overlay on image ────────────────────────────────────────────────
+  // ── Transcript overlay ────────────────────────────────────────────────────────
   transcriptOverlay:        { position: 'absolute', top: 0, left: 0, right: 0, bottom: 62, backgroundColor: 'rgba(10,8,40,0.88)' },
   transcriptOverlayContent: { padding: 18, paddingBottom: 8 },
   transcriptOverlayTxt:     { fontSize: 15, color: '#e0e7ff', lineHeight: 27 },
 
-  // ── FULLSCREEN PLAYER ─────────────────────────────────────────────────────────
+  // ── FULLSCREEN ────────────────────────────────────────────────────────────────
   fsRoot: { flex: 1, backgroundColor: '#000' },
   fsBg:   { backgroundColor: '#000' },
   fsImg:  { width: '100%', height: '100%' },
 
-  // Top bar
   fsTopBar: {
     position: 'absolute', top: 0, left: 0, right: 0,
     flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -843,22 +896,41 @@ const s = StyleSheet.create({
   fsTitleTxt:     { flex: 1, color: '#fff', fontSize: 13, fontWeight: '600' },
   fsExitBtn:      { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 18 },
 
+  // Fullscreen language switcher
+  fsLangBtn:           { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)' },
+  fsLangBtnActive:     { backgroundColor: 'rgba(99,102,241,0.55)', borderWidth: 1, borderColor: '#818cf8' },
+  fsLangBtnIcon:       { fontSize: 13 },
+  fsLangBtnTxt:        { fontSize: 11, fontWeight: '800', color: '#fff' },
+  fsLangPicker:        { position: 'absolute', left: 16, right: 16, backgroundColor: 'rgba(10,8,40,0.96)', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(99,102,241,0.35)' },
+  fsLangPickerLabel:   { fontSize: 10, fontWeight: '800', color: '#6366f1', letterSpacing: 1, marginBottom: 12 },
+  fsLangPillRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  fsLangPill:          { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
+  fsLangPillActive:    { backgroundColor: '#6366f1', borderColor: '#6366f1' },
+  fsLangPillTxt:       { fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.6)' },
+  fsLangPillTxtActive: { color: '#fff' },
+  fsLangPillCheck:     { fontSize: 11, color: '#fff', fontWeight: '800' },
+
   // Center play indicator
   fsCenterIndicator: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   fsCenterCircle:    { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
   fsCenterIcon:      { fontSize: 28, color: '#fff' },
 
-  // Swipe arrow hints
+  // Swipe hints
   fsPrevHint: { position: 'absolute', left: 0, top: '30%', bottom: '30%', width: 52, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.25)' },
   fsNextHint: { position: 'absolute', right: 0, top: '30%', bottom: '30%', width: 52, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.25)' },
   fsNavArrow: { color: 'rgba(255,255,255,0.8)', fontSize: 36, fontWeight: '300' },
 
-  // Slide dots (fullscreen)
-  fsDotsRow:    { position: 'absolute', bottom: 80, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6 },
-  fsDot:        { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.35)' },
-  fsDotActive:  { width: 20, height: 6, backgroundColor: '#fff', borderRadius: 3 },
+  // Slide dots
+  fsDotsRow:   { position: 'absolute', bottom: 80, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6 },
+  fsDot:       { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.35)' },
+  fsDotActive: { width: 20, height: 6, backgroundColor: '#fff', borderRadius: 3 },
 
-  // Bottom audio controls
+  // FAQ floating button (fullscreen)
+  fsFaqBtn:   { position: 'absolute', width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(99,102,241,0.90)', alignItems: 'center', justifyContent: 'center', gap: 1, shadowColor: '#6366f1', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.6, shadowRadius: 8, elevation: 10 },
+  fsFaqIcon:  { fontSize: 20 },
+  fsFaqLabel: { fontSize: 8, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
+
+  // Bottom audio bar
   fsBottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -891,26 +963,26 @@ const s = StyleSheet.create({
   dotActive:    { width: 20, height: 6, backgroundColor: '#6366f1', borderRadius: 3 },
 
   // ── Bottom section ────────────────────────────────────────────────────────────
-  bottomSection: { flex: 1, backgroundColor: '#0d1420' },
-  bottomContent: { paddingHorizontal: 16, paddingTop: 10, gap: 4 },
-  countdownBanner:     { backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(99,102,241,0.4)', overflow: 'hidden' },
-  countdownBar:        { height: 3, backgroundColor: '#2d3748' },
-  countdownFill:       { position: 'absolute', top: 0, left: 0, bottom: 0, backgroundColor: '#6366f1' },
-  countdownRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10 },
-  countdownTxt:        { fontSize: 13, fontWeight: '700', color: '#a5b4fc' },
-  countdownCancelChip: { backgroundColor: '#6366f1', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
-  countdownCancelTxt:  { fontSize: 11, fontWeight: '700', color: '#fff' },
-  autoPlayRow:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 },
-  autoPlayRowCompact:  { paddingVertical: 4 },
-  autoPlayLeft:        { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  autoPlayRowIcon:     { fontSize: 13, color: '#6366f1' },
-  autoPlayLabel:       { fontSize: 13, fontWeight: '700', color: '#e2e8f0' },
-  autoPlayDesc:        { fontSize: 11, color: '#4b5563', marginTop: 1 },
-  toggle:              { width: 44, height: 24, borderRadius: 12, backgroundColor: '#2d3748', justifyContent: 'center', padding: 2 },
-  toggleOn:            { backgroundColor: '#6366f1' },
-  toggleThumb:         { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' },
-  toggleThumbOn:       { alignSelf: 'flex-end' },
-  bottomDivider:       { height: 1, backgroundColor: '#1a2235', marginVertical: 10 },
+  bottomSection:           { flex: 1, backgroundColor: '#0d1420' },
+  bottomContent:           { paddingHorizontal: 16, paddingTop: 10, gap: 4 },
+  countdownBanner:         { backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(99,102,241,0.4)', overflow: 'hidden' },
+  countdownBar:            { height: 3, backgroundColor: '#2d3748' },
+  countdownFill:           { position: 'absolute', top: 0, left: 0, bottom: 0, backgroundColor: '#6366f1' },
+  countdownRow:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10 },
+  countdownTxt:            { fontSize: 13, fontWeight: '700', color: '#a5b4fc' },
+  countdownCancelChip:     { backgroundColor: '#6366f1', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+  countdownCancelTxt:      { fontSize: 11, fontWeight: '700', color: '#fff' },
+  autoPlayRow:             { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 },
+  autoPlayRowCompact:      { paddingVertical: 4 },
+  autoPlayLeft:            { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  autoPlayRowIcon:         { fontSize: 13, color: '#6366f1' },
+  autoPlayLabel:           { fontSize: 13, fontWeight: '700', color: '#e2e8f0' },
+  autoPlayDesc:            { fontSize: 11, color: '#4b5563', marginTop: 1 },
+  toggle:                  { width: 44, height: 24, borderRadius: 12, backgroundColor: '#2d3748', justifyContent: 'center', padding: 2 },
+  toggleOn:                { backgroundColor: '#6366f1' },
+  toggleThumb:             { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' },
+  toggleThumbOn:           { alignSelf: 'flex-end' },
+  bottomDivider:           { height: 1, backgroundColor: '#1a2235', marginVertical: 10 },
   transcriptToggleRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   transcriptSectionLabel:  { fontSize: 9, fontWeight: '800', color: '#6366f1', letterSpacing: 1 },
   transcriptTogglePill:    { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: 'rgba(99,102,241,0.15)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.3)' },
@@ -924,15 +996,15 @@ const s = StyleSheet.create({
   fabIcon: { fontSize: 24 },
 
   // ── Landscape ─────────────────────────────────────────────────────────────────
-  landscapeBody:       { flex: 1, flexDirection: 'row' },
-  rightPanel:          { flex: 1, backgroundColor: '#0f1623', flexDirection: 'column' },
-  rightTop:            { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10 },
-  rightTitleRow:       { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10 },
-  slideTitleLandscape: { flex: 1, fontSize: 14, fontWeight: '700', color: '#f1f5f9', lineHeight: 20 },
-  aiBtn:               { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(99,102,241,0.18)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.4)' },
-  aiBtnIcon:           { fontSize: 15 },
-  aiBtnTxt:            { fontSize: 11, fontWeight: '700', color: '#a5b4fc' },
-  rightDivider:        { height: 1, backgroundColor: '#1a2235', marginHorizontal: 14 },
+  landscapeBody:          { flex: 1, flexDirection: 'row' },
+  rightPanel:             { flex: 1, backgroundColor: '#0f1623', flexDirection: 'column' },
+  rightTop:               { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10 },
+  rightTitleRow:          { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10 },
+  slideTitleLandscape:    { flex: 1, fontSize: 14, fontWeight: '700', color: '#f1f5f9', lineHeight: 20 },
+  aiBtn:                  { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(99,102,241,0.18)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.4)' },
+  aiBtnIcon:              { fontSize: 15 },
+  aiBtnTxt:               { fontSize: 11, fontWeight: '700', color: '#a5b4fc' },
+  rightDivider:           { height: 1, backgroundColor: '#1a2235', marginHorizontal: 14 },
   transcriptPanel:        { flex: 1, marginTop: 4 },
   transcriptPanelContent: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8 },
   transcriptPanelLabel:   { fontSize: 9, fontWeight: '800', color: '#374151', letterSpacing: 1, marginBottom: 8 },
@@ -941,51 +1013,70 @@ const s = StyleSheet.create({
   navBarLandscape:        { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#1a2235', paddingHorizontal: 14, paddingTop: 8 },
 
   // ── Chat modal ────────────────────────────────────────────────────────────────
-  chatOverlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  chatSheet:      { backgroundColor: '#161d2e', borderTopLeftRadius: 24, borderTopRightRadius: 24, minHeight: '62%', maxHeight: '92%', overflow: 'hidden' },
-  chatHeader:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: '#1f2a3d' },
-  chatHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  chatAvatar:     { width: 44, height: 44, borderRadius: 22, backgroundColor: '#4f46e5', alignItems: 'center', justifyContent: 'center' },
-  chatAvatarIcon: { fontSize: 22 },
-  chatTitle:      { fontSize: 16, fontWeight: '800', color: '#f1f5f9' },
-  chatSubtitle:   { fontSize: 12, color: '#6b7280', marginTop: 2 },
-  chatCloseBtn:   { width: 30, height: 30, borderRadius: 15, backgroundColor: '#1f2a3d', alignItems: 'center', justifyContent: 'center' },
-  chatCloseTxt:   { color: '#9ca3af', fontSize: 13, fontWeight: '700' },
-  modeRow:        { flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 10, gap: 8, borderBottomWidth: 1, borderBottomColor: '#1f2a3d' },
-  modeBtn:        { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 10, backgroundColor: '#1f2a3d' },
-  modeBtnActive:  { backgroundColor: 'rgba(99,102,241,0.18)', borderWidth: 1, borderColor: '#6366f1' },
-  modeBtnIcon:    { fontSize: 15 },
-  modeBtnTxt:     { fontSize: 12, fontWeight: '600', color: '#4b5563' },
-  modeBtnTxtActive: { color: '#a5b4fc' },
-  chatMessages:        { flex: 1 },
-  chatMessagesContent: { padding: 14, gap: 10 },
-  msgBubble:   { maxWidth: '84%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16 },
-  msgUser:     { alignSelf: 'flex-end', backgroundColor: '#6366f1', borderBottomRightRadius: 4 },
-  msgBot:      { alignSelf: 'flex-start', backgroundColor: '#1f2a3d', borderBottomLeftRadius: 4 },
-  msgBotLabel: { fontSize: 9, fontWeight: '800', color: '#6366f1', marginBottom: 4, letterSpacing: 0.8 },
-  msgText:     { fontSize: 14, lineHeight: 20 },
-  msgTextUser: { color: '#fff' },
-  msgTextBot:  { color: '#cbd5e1' },
-  typingRow:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  typingTxt:   { fontSize: 13, color: '#6b7280', fontStyle: 'italic' },
-  chatInputRow: { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#1f2a3d', gap: 8 },
-  chatInput:    { flex: 1, minHeight: 42, maxHeight: 100, backgroundColor: '#1f2a3d', borderRadius: 21, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: '#f1f5f9' },
-  sendBtn:      { width: 42, height: 42, borderRadius: 21, backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
-  sendBtnOff:   { backgroundColor: '#2d3748' },
-  sendBtnTxt:   { fontSize: 16, color: '#fff' },
-  altInputArea: { alignItems: 'center', justifyContent: 'center', paddingVertical: 24, borderTopWidth: 1, borderTopColor: '#1f2a3d', gap: 12 },
-  bigActionBtn: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(99,102,241,0.18)', borderWidth: 2, borderColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
-  bigActionIcon:{ fontSize: 32 },
-  altInputHint: { fontSize: 13, color: '#6b7280' },
+  chatOverlay:       { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
+  chatSheet:         { backgroundColor: '#131c2e', borderTopLeftRadius: 28, borderTopRightRadius: 28, minHeight: '65%', maxHeight: '92%', overflow: 'hidden' },
 
-  // ── Fullscreen FAQ floating button ────────────────────────────────────────────
-  fsFaqBtn: {
-    position: 'absolute', width: 48, height: 48, borderRadius: 24,
-    backgroundColor: 'rgba(99,102,241,0.90)',
-    alignItems: 'center', justifyContent: 'center', gap: 1,
-    shadowColor: '#6366f1', shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.6, shadowRadius: 8, elevation: 10,
-  },
-  fsFaqIcon:  { fontSize: 20 },
-  fsFaqLabel: { fontSize: 8, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
+  // Handle
+  chatHandleWrap:    { alignItems: 'center', paddingTop: 10, paddingBottom: 4 },
+  chatHandle:        { width: 40, height: 4, borderRadius: 2, backgroundColor: '#2d3748' },
+
+  // Header
+  chatHeader:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: '#1a2438', gap: 12 },
+  chatAvatarWrap:    { position: 'relative', width: 46, height: 46 },
+  chatAvatar:        { width: 46, height: 46, borderRadius: 23, backgroundColor: '#4f46e5', alignItems: 'center', justifyContent: 'center' },
+  chatAvatarIcon:    { fontSize: 22 },
+  chatOnlineDot:     { position: 'absolute', bottom: 1, right: 1, width: 12, height: 12, borderRadius: 6, backgroundColor: '#10b981', borderWidth: 2, borderColor: '#131c2e' },
+  chatHeaderInfo:    { flex: 1 },
+  chatTitle:         { fontSize: 16, fontWeight: '800', color: '#f1f5f9' },
+  chatSubtitle:      { fontSize: 12, color: '#10b981', marginTop: 2, fontWeight: '600' },
+  chatCloseBtn:      { width: 32, height: 32, borderRadius: 16, backgroundColor: '#1f2a3d', alignItems: 'center', justifyContent: 'center' },
+  chatCloseTxt:      { color: '#6b7280', fontSize: 14, fontWeight: '700' },
+
+  // Context pill
+  chatContextBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, marginHorizontal: 16, marginBottom: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: 'rgba(99,102,241,0.10)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.2)' },
+  chatContextIcon:   { fontSize: 12 },
+  chatContextTxt:    { flex: 1, fontSize: 12, fontWeight: '600', color: '#a5b4fc' },
+
+  // Mode tabs
+  modeRow:           { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, gap: 8, borderBottomWidth: 1, borderBottomColor: '#1a2438' },
+  modeBtn:           { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 12, backgroundColor: '#1a2438' },
+  modeBtnActive:     { backgroundColor: 'rgba(99,102,241,0.18)', borderWidth: 1, borderColor: '#6366f1' },
+  modeBtnIcon:       { fontSize: 15 },
+  modeBtnTxt:        { fontSize: 12, fontWeight: '600', color: '#374151' },
+  modeBtnTxtActive:  { color: '#a5b4fc' },
+
+  // Quick FAQ chips
+  faqChipsScroll:    { maxHeight: 48 },
+  faqChipsContent:   { paddingHorizontal: 16, paddingVertical: 8, gap: 8, flexDirection: 'row', alignItems: 'center' },
+  faqChip:           { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#1a2438', borderWidth: 1, borderColor: 'rgba(99,102,241,0.3)' },
+  faqChipTxt:        { fontSize: 12, fontWeight: '600', color: '#818cf8' },
+
+  // Messages
+  chatMessages:        { flex: 1 },
+  chatMessagesContent: { padding: 16, gap: 12 },
+  msgRow:              { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  msgRowUser:          { justifyContent: 'flex-end' },
+  msgRowBot:           { justifyContent: 'flex-start' },
+  msgBotAvatar:        { width: 28, height: 28, borderRadius: 14, backgroundColor: '#4f46e5', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  msgBotAvatarTxt:     { fontSize: 14 },
+  msgBubble:           { maxWidth: '80%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
+  msgUser:             { backgroundColor: '#6366f1', borderBottomRightRadius: 4 },
+  msgBot:              { backgroundColor: '#1f2a3d', borderBottomLeftRadius: 4 },
+  msgBotLabel:         { fontSize: 9, fontWeight: '800', color: '#6366f1', marginBottom: 5, letterSpacing: 0.8 },
+  msgText:             { fontSize: 14, lineHeight: 20 },
+  msgTextUser:         { color: '#fff' },
+  msgTextBot:          { color: '#cbd5e1' },
+  typingRow:           { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  typingTxt:           { fontSize: 13, color: '#6b7280', fontStyle: 'italic' },
+
+  // Input
+  chatInputRow:  { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#1a2438', gap: 10 },
+  chatInput:     { flex: 1, minHeight: 44, maxHeight: 110, backgroundColor: '#1f2a3d', borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10, fontSize: 14, color: '#f1f5f9' },
+  sendBtn:       { width: 44, height: 44, borderRadius: 22, backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
+  sendBtnOff:    { backgroundColor: '#1f2a3d' },
+  sendBtnTxt:    { fontSize: 16, color: '#fff' },
+  altInputArea:  { alignItems: 'center', justifyContent: 'center', paddingVertical: 28, borderTopWidth: 1, borderTopColor: '#1a2438', gap: 14 },
+  bigActionBtn:  { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(99,102,241,0.18)', borderWidth: 2, borderColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
+  bigActionIcon: { fontSize: 32 },
+  altInputHint:  { fontSize: 13, color: '#6b7280' },
 });

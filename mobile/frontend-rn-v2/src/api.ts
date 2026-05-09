@@ -56,3 +56,17 @@ export async function fetchSlides(trainingId: string): Promise<Slide[]> {
   if (!res.ok) throw new Error('Failed to load slides');
   return res.json();
 }
+
+export interface AskRequest  { question: string; locale: string; slideIndex?: number }
+export interface FaqSource   { question: string; answer: string; slideIndex: number }
+export interface AskResponse { answer: string; sources: FaqSource[]; usedRag: boolean }
+
+export async function askFaq(trainingId: string, req: AskRequest): Promise<AskResponse> {
+  const res = await fetch(`${BASE}/trainings/${trainingId}/ask`, {
+    method: 'POST',
+    headers: HEADERS,
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) throw new Error('FAQ service unavailable');
+  return res.json();
+}

@@ -36,6 +36,7 @@ azure:
     endpoint: ${AZURE_OPENAI_ENDPOINT:https://pitchperfectllmengine2.openai.azure.com/}
     deployment-name: ${AZURE_OPENAI_DEPLOYMENT:gpt-4o}
     api-version: 2024-02-15-preview
+    embedding-deployment: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT:text-embedding-3-small}
 
 elevenlabs:
   model: eleven_multilingual_v2
@@ -54,11 +55,11 @@ elevenlabs:
     #   Raju    eyVoIoi3vo6sJoHOKgAc  Clear, Natural & Warm, male
     #   Anika   RABOvaPec1ymXz02oDQi  Sweet & Lively, female
     #   Monika  VZyYADHcMi33m0wO9zD1  Calm & Natural, female
-    hi: JBFqnCBsd6RMkjVDRZzb   # Ruhaan — Clear Hindi Narration Voice (Indian accent)
+    hi: RABOvaPec1ymXz02oDQi   # Ruhaan — Clear Hindi Narration Voice (Indian accent)
     ta: 21m00Tcm4TlvDq8ikWAM   # Rachel — multilingual; swap for Tamil-native
     te: AZnzlk1XvdvUeBnXmlld   # Domi   — multilingual; swap for Telugu-native
     mr: EXAVITQu4vr4xnSDxMaL   # Bella  — multilingual; swap for Marathi-native
-    bn: MF3mGyEYCl7XYWbV9V6O   # Elli   — multilingual; swap for Bengali-native
+    bn: FDQcYNtvPtQjNlTyU3du   # Elli   — multilingual; swap for Bengali-native
 
   # ── Per-locale stability (0.0 = expressive/varied, 1.0 = flat/robotic) ──────
   # Indian languages need lower stability than English to avoid robotic prosody.
