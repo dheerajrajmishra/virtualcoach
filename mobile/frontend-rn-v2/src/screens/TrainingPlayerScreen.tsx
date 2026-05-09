@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio, AVPlaybackStatus } from 'expo-av';
-import { fetchSlides, resolveMediaUrl, askFaq, Slide, Training } from '../api';
+import { fetchSlides, resolveMediaUrl, askFaq, transcribeAudio, Slide, Training } from '../api';
 
 if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
 
@@ -97,6 +97,8 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   const [chatInput, setChatInput]       = useState('');
   const [chatLoading, setChatLoading]   = useState(false);
   const [chatMode, setChatMode]         = useState<'text' | 'voice' | 'video'>('text');
+  const [isRecording, setIsRecording]   = useState(false);
+  const recordingRef                    = useRef<Audio.Recording | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([{
     id: '0', role: 'assistant',
     text: `Hi! I'm your AI Coach for "${training.name}". Ask me anything about this training!`,
@@ -254,11 +256,11 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     setShowTranscript(o => !o);
   }
 
-  async function sendChatMessage(overrideText?: string) {
-    const text = (overrideText ?? chatInput).trim();
+  async function sendChatMessage(textOrEvent?: string | any) {
+    const text = (typeof textOrEvent === 'string' ? textOrEvent : chatInput).trim();
     if (!text) return;
     setChatMessages(prev => [...prev, { id: `u${Date.now()}`, role: 'user', text }]);
-    if (!overrideText) setChatInput('');
+    if (typeof textOrEvent !== 'string') setChatInput('');
     setChatLoading(true);
     try {
       const result = await askFaq(training.id, {
@@ -276,6 +278,58 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     } finally {
       setChatLoading(false);
       setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 80);
+    }
+  }
+
+  async function startRecording() {
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (permission.status !== 'granted') {
+        alert('Microphone permission is required to use voice chat.');
+        return;
+      }
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      recordingRef.current = recording;
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Failed to start recording', err);
+    }
+  }
+
+  async function stopRecording() {
+    setIsRecording(false);
+    if (!recordingRef.current) return;
+    try {
+      await recordingRef.current.stopAndUnloadAsync();
+      const uri = recordingRef.current.getURI();
+      recordingRef.current = null;
+
+      if (uri) {
+        setChatInput('Listening...');
+        setChatLoading(true);
+        const text = await transcribeAudio(uri, locale);
+        setChatInput(text);
+      }
+    } catch (err) {
+      console.error('Failed to stop recording', err);
+      setChatInput('');
+    } finally {
+      setChatLoading(false);
+    }
+  }
+
+  function toggleRecording() {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
     }
   }
 
@@ -592,11 +646,11 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     </TouchableOpacity>
   );
 
-  // ── Chat / FAQ modal (full redesign) ───────────────────────────────────────
+  // ── Chat / FAQ modal (Minimalist Redesign) ───────────────────────────────
   const chatModal = (
     <Modal visible={showChat} animationType="slide" transparent onRequestClose={() => setShowChat(false)}>
-      <KeyboardAvoidingView style={s.chatOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={[s.chatSheet, { paddingBottom: insets.bottom + 8 }]}>
+      <KeyboardAvoidingView style={s.chatOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={s.chatSheet}>
 
           {/* Drag handle */}
           <View style={s.chatHandleWrap}>
@@ -605,109 +659,59 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
 
           {/* Header */}
           <View style={s.chatHeader}>
-            <View style={s.chatAvatarWrap}>
-              <View style={s.chatAvatar}><Text style={s.chatAvatarIcon}>🤖</Text></View>
-              <View style={s.chatOnlineDot} />
-            </View>
-            <View style={s.chatHeaderInfo}>
-              <Text style={s.chatTitle}>AI Coach</Text>
-              <Text style={s.chatSubtitle}>● Online · Ready to help</Text>
-            </View>
+            <Text style={s.chatTitle}>AI Coach</Text>
             <TouchableOpacity style={s.chatCloseBtn} onPress={() => setShowChat(false)}>
               <Text style={s.chatCloseTxt}>✕</Text>
             </TouchableOpacity>
           </View>
-
-          {/* Context pill — always shows which slide we're asking about */}
-          <View style={s.chatContextBanner}>
-            <Text style={s.chatContextIcon}>📍</Text>
-            <Text style={s.chatContextTxt} numberOfLines={1}>
-              Slide {currentIndex + 1} · {slide?.title ?? training.name}
-            </Text>
-          </View>
-
-          {/* Mode tabs */}
-          <View style={s.modeRow}>
-            {(['text', 'voice', 'video'] as const).map(m => (
-              <TouchableOpacity key={m} style={[s.modeBtn, chatMode === m && s.modeBtnActive]}
-                onPress={() => setChatMode(m)}>
-                <Text style={s.modeBtnIcon}>{m === 'text' ? '💬' : m === 'voice' ? '🎤' : '📹'}</Text>
-                <Text style={[s.modeBtnTxt, chatMode === m && s.modeBtnTxtActive]}>
-                  {m === 'text' ? 'Text' : m === 'voice' ? 'Voice' : 'Video'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Quick FAQ chips — text mode only */}
-          {chatMode === 'text' && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}
-              style={s.faqChipsScroll} contentContainerStyle={s.faqChipsContent}>
-              {['Summarise slide', 'Quiz me', 'Explain simply', 'Key takeaways', 'Next steps'].map(q => (
-                <TouchableOpacity key={q} style={s.faqChip} onPress={() => sendChatMessage(q)}>
-                  <Text style={s.faqChipTxt}>{q}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
 
           {/* Messages */}
           <ScrollView ref={chatScrollRef} style={s.chatMessages} contentContainerStyle={s.chatMessagesContent}
             onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}>
             {chatMessages.map(msg => (
               <View key={msg.id} style={[s.msgRow, msg.role === 'user' ? s.msgRowUser : s.msgRowBot]}>
-                {msg.role === 'assistant' && (
-                  <View style={s.msgBotAvatar}><Text style={s.msgBotAvatarTxt}>🤖</Text></View>
-                )}
                 <View style={[s.msgBubble, msg.role === 'user' ? s.msgUser : s.msgBot]}>
-                  {msg.role === 'assistant' && <Text style={s.msgBotLabel}>AI COACH</Text>}
-                  <Text style={[s.msgText, msg.role === 'user' ? s.msgTextUser : s.msgTextBot]}>
-                    {msg.text}
-                  </Text>
+                  <Text style={[s.msgText, msg.role === 'user' ? s.msgTextUser : s.msgTextBot]}>{msg.text}</Text>
                 </View>
               </View>
             ))}
             {chatLoading && (
               <View style={[s.msgRow, s.msgRowBot]}>
-                <View style={s.msgBotAvatar}><Text style={s.msgBotAvatarTxt}>🤖</Text></View>
                 <View style={[s.msgBubble, s.msgBot]}>
-                  <Text style={s.msgBotLabel}>AI COACH</Text>
-                  <View style={s.typingRow}>
-                    <ActivityIndicator size="small" color="#6366f1" />
-                    <Text style={s.typingTxt}>Thinking…</Text>
-                  </View>
+                  <View style={s.typingRow}><ActivityIndicator size="small" color="#6366f1" /></View>
                 </View>
               </View>
             )}
           </ScrollView>
 
-          {/* Input area */}
-          {chatMode === 'text' ? (
-            <View style={s.chatInputRow}>
-              <TextInput style={s.chatInput} value={chatInput} onChangeText={setChatInput}
-                placeholder="Ask anything about this slide…" placeholderTextColor="#4b5563"
-                multiline maxLength={500} returnKeyType="send" blurOnSubmit
-                onSubmitEditing={() => sendChatMessage()} />
-              <TouchableOpacity style={[s.sendBtn, !chatInput.trim() && s.sendBtnOff]}
-                onPress={() => sendChatMessage()} disabled={!chatInput.trim() || chatLoading}>
-                <Text style={s.sendBtnTxt}>➤</Text>
+          {/* Quick Context / Chips */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}
+            style={s.faqChipsScroll} contentContainerStyle={s.faqChipsContent}>
+            {['Summarise slide', 'Key takeaways', 'Explain simply', 'Next steps'].map(q => (
+              <TouchableOpacity key={q} style={s.faqChip} onPress={() => sendChatMessage(q)}>
+                <Text style={s.faqChipTxt}>{q}</Text>
               </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={s.altInputArea}>
-              <TouchableOpacity style={s.bigActionBtn}>
-                <Text style={s.bigActionIcon}>{chatMode === 'voice' ? '🎤' : '📹'}</Text>
-              </TouchableOpacity>
-              <Text style={s.altInputHint}>{chatMode === 'voice' ? 'Tap to ask by voice' : 'Tap to ask by video'}</Text>
-            </View>
-          )}
+            ))}
+          </ScrollView>
 
+          {/* Input Area */}
+          <View style={[s.chatInputRow, { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 12) : 12 }]}>
+            <TouchableOpacity style={[s.iconActionBtn, isRecording && s.iconActionBtnActive]} onPress={toggleRecording}>
+              <Text style={s.iconActionTxt}>{isRecording ? '⏹️' : '🎤'}</Text>
+            </TouchableOpacity>
+            <TextInput style={s.chatInput} value={chatInput} onChangeText={setChatInput}
+              placeholder={`Ask about slide ${currentIndex + 1}…`} placeholderTextColor="#6b7280"
+              multiline maxLength={500} returnKeyType="send" blurOnSubmit onSubmitEditing={() => sendChatMessage()} />
+            <TouchableOpacity style={[s.sendBtn, !chatInput.trim() && s.sendBtnOff]}
+              onPress={() => sendChatMessage()} disabled={!chatInput.trim() || chatLoading}>
+              <Text style={s.sendBtnTxt}>➤</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
   );
 
-  // ══════════════════════════════════════════════════════════════════════════
   // LANDSCAPE
   // ══════════════════════════════════════════════════════════════════════════
   if (isLandscape) {
@@ -1014,42 +1018,23 @@ const s = StyleSheet.create({
 
   // ── Chat modal ────────────────────────────────────────────────────────────────
   chatOverlay:       { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
-  chatSheet:         { backgroundColor: '#131c2e', borderTopLeftRadius: 28, borderTopRightRadius: 28, minHeight: '65%', maxHeight: '92%', overflow: 'hidden' },
+  chatSheet:         { backgroundColor: '#111827', borderTopLeftRadius: 28, borderTopRightRadius: 28, height: '90%', overflow: 'hidden', borderWidth: 1, borderColor: '#1f2937' },
 
   // Handle
   chatHandleWrap:    { alignItems: 'center', paddingTop: 10, paddingBottom: 4 },
-  chatHandle:        { width: 40, height: 4, borderRadius: 2, backgroundColor: '#2d3748' },
+  chatHandle:        { width: 36, height: 4, borderRadius: 2, backgroundColor: '#374151' },
 
-  // Header
-  chatHeader:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: '#1a2438', gap: 12 },
-  chatAvatarWrap:    { position: 'relative', width: 46, height: 46 },
-  chatAvatar:        { width: 46, height: 46, borderRadius: 23, backgroundColor: '#4f46e5', alignItems: 'center', justifyContent: 'center' },
-  chatAvatarIcon:    { fontSize: 22 },
-  chatOnlineDot:     { position: 'absolute', bottom: 1, right: 1, width: 12, height: 12, borderRadius: 6, backgroundColor: '#10b981', borderWidth: 2, borderColor: '#131c2e' },
-  chatHeaderInfo:    { flex: 1 },
-  chatTitle:         { fontSize: 16, fontWeight: '800', color: '#f1f5f9' },
-  chatSubtitle:      { fontSize: 12, color: '#10b981', marginTop: 2, fontWeight: '600' },
-  chatCloseBtn:      { width: 32, height: 32, borderRadius: 16, backgroundColor: '#1f2a3d', alignItems: 'center', justifyContent: 'center' },
-  chatCloseTxt:      { color: '#6b7280', fontSize: 14, fontWeight: '700' },
-
-  // Context pill
-  chatContextBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, marginHorizontal: 16, marginBottom: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: 'rgba(99,102,241,0.10)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.2)' },
-  chatContextIcon:   { fontSize: 12 },
-  chatContextTxt:    { flex: 1, fontSize: 12, fontWeight: '600', color: '#a5b4fc' },
-
-  // Mode tabs
-  modeRow:           { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, gap: 8, borderBottomWidth: 1, borderBottomColor: '#1a2438' },
-  modeBtn:           { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 12, backgroundColor: '#1a2438' },
-  modeBtnActive:     { backgroundColor: 'rgba(99,102,241,0.18)', borderWidth: 1, borderColor: '#6366f1' },
-  modeBtnIcon:       { fontSize: 15 },
-  modeBtnTxt:        { fontSize: 12, fontWeight: '600', color: '#374151' },
-  modeBtnTxtActive:  { color: '#a5b4fc' },
+  // Header (Minimal)
+  chatHeader:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 4, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#1f2937' },
+  chatTitle:         { fontSize: 16, fontWeight: '700', color: '#f1f5f9', letterSpacing: 0.5 },
+  chatCloseBtn:      { width: 32, height: 32, borderRadius: 16, backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center' },
+  chatCloseTxt:      { color: '#9ca3af', fontSize: 14, fontWeight: '700' },
 
   // Quick FAQ chips
-  faqChipsScroll:    { maxHeight: 48 },
+  faqChipsScroll:    { maxHeight: 44, flexGrow: 0 },
   faqChipsContent:   { paddingHorizontal: 16, paddingVertical: 8, gap: 8, flexDirection: 'row', alignItems: 'center' },
-  faqChip:           { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#1a2438', borderWidth: 1, borderColor: 'rgba(99,102,241,0.3)' },
-  faqChipTxt:        { fontSize: 12, fontWeight: '600', color: '#818cf8' },
+  faqChip:           { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: 'transparent', borderWidth: 1, borderColor: '#374151' },
+  faqChipTxt:        { fontSize: 12, fontWeight: '500', color: '#9ca3af' },
 
   // Messages
   chatMessages:        { flex: 1 },
@@ -1057,26 +1042,21 @@ const s = StyleSheet.create({
   msgRow:              { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   msgRowUser:          { justifyContent: 'flex-end' },
   msgRowBot:           { justifyContent: 'flex-start' },
-  msgBotAvatar:        { width: 28, height: 28, borderRadius: 14, backgroundColor: '#4f46e5', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  msgBotAvatarTxt:     { fontSize: 14 },
-  msgBubble:           { maxWidth: '80%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
+  msgBubble:           { maxWidth: '85%', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 20 },
   msgUser:             { backgroundColor: '#6366f1', borderBottomRightRadius: 4 },
-  msgBot:              { backgroundColor: '#1f2a3d', borderBottomLeftRadius: 4 },
-  msgBotLabel:         { fontSize: 9, fontWeight: '800', color: '#6366f1', marginBottom: 5, letterSpacing: 0.8 },
-  msgText:             { fontSize: 14, lineHeight: 20 },
+  msgBot:              { backgroundColor: '#1f2937', borderBottomLeftRadius: 4 },
+  msgText:             { fontSize: 14, lineHeight: 22 },
   msgTextUser:         { color: '#fff' },
   msgTextBot:          { color: '#cbd5e1' },
-  typingRow:           { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  typingTxt:           { fontSize: 13, color: '#6b7280', fontStyle: 'italic' },
+  typingRow:           { flexDirection: 'row', alignItems: 'center', paddingVertical: 2 },
 
   // Input
-  chatInputRow:  { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#1a2438', gap: 10 },
-  chatInput:     { flex: 1, minHeight: 44, maxHeight: 110, backgroundColor: '#1f2a3d', borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10, fontSize: 14, color: '#f1f5f9' },
+  chatInputRow:  { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12, borderTopWidth: 1, borderTopColor: '#1f2937', gap: 10, backgroundColor: '#111827' },
+  iconActionBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1f2937' },
+  iconActionBtnActive: { backgroundColor: '#ef4444' },
+  iconActionTxt: { fontSize: 18 },
+  chatInput:     { flex: 1, minHeight: 44, maxHeight: 110, backgroundColor: '#1f2937', borderRadius: 22, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, fontSize: 14, color: '#f1f5f9' },
   sendBtn:       { width: 44, height: 44, borderRadius: 22, backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
-  sendBtnOff:    { backgroundColor: '#1f2a3d' },
+  sendBtnOff:    { backgroundColor: '#374151' },
   sendBtnTxt:    { fontSize: 16, color: '#fff' },
-  altInputArea:  { alignItems: 'center', justifyContent: 'center', paddingVertical: 28, borderTopWidth: 1, borderTopColor: '#1a2438', gap: 14 },
-  bigActionBtn:  { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(99,102,241,0.18)', borderWidth: 2, borderColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
-  bigActionIcon: { fontSize: 32 },
-  altInputHint:  { fontSize: 13, color: '#6b7280' },
 });

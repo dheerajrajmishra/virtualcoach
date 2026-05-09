@@ -55,6 +55,19 @@ public class AzureSpeechService {
         }
     }
 
+    /**
+     * Transcribes audio from direct byte array.
+     */
+    public String transcribe(byte[] audioBytes, String contentType, String locale) {
+        if (audioBytes == null || audioBytes.length == 0) return "";
+        try {
+            return callSpeechApi(audioBytes, contentType, toAzureLocale(locale));
+        } catch (Exception e) {
+            log.error("STT transcription failed for byte array: {}", e.getMessage());
+            return "";
+        }
+    }
+
     private byte[] fetchAudioBytes(String mediaUrl) throws IOException {
         if (mediaUrl.startsWith("/storage/") || mediaUrl.startsWith("./storage/")) {
             // Local storage: strip the /storage/ prefix and read from configured path

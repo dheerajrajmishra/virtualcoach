@@ -31,10 +31,7 @@ import java.util.stream.Collectors;
 public class RagService {
 
     private static final MediaType JSON_MEDIA   = MediaType.get("application/json");
-    private static final int    TOP_K           = 3;
-    private static final double MIN_SIMILARITY  = 0.55; // discard irrelevant results below threshold
 
-    private final EmbeddingService embeddingService;
     private final FaqRepository    faqRepository;
     private final SlideRepository  slideRepository;
 
@@ -72,61 +69,26 @@ public class RagService {
      */
     public AskResponse ask(String trainingId, String question, String locale, Integer slideIndex) {
         String preview = question.length() > 80 ? question.substring(0, 80) + "…" : question;
-        log.info("RAG ask | training={} locale={} slide={} q='{}'", trainingId, locale, slideIndex, preview);
+        log.info("RAG ask (LLM only) | training={} locale={} slide={} q='{}'", trainingId, locale, slideIndex, preview);
 
-        // 1. Embed the question (fall back to keyword search on embedding failure)
-        List<Double> qVec = null;
-        try {
-            qVec = embeddingService.embed(question);
-        } catch (Exception e) {
-            log.warn("Query embedding failed, falling back to keyword match: {}", e.getMessage());
-        }
+        // 1. Fetch all FAQs for this training (we will pass these as context to the LLM)
+        List<FAQ> allFaqs = faqRepository.findByTrainingId(trainingId);
 
-        // 2. Retrieve top-K FAQs
-        List<FAQ> allFaqs  = faqRepository.findByTrainingId(trainingId);
-        List<FAQ> topFaqs  = retrieveTopK(allFaqs, qVec, question);
-
-        // 3. Current slide context (title + English transcript)
+        // 2. Current slide context (title + English transcript)
         String slideCtx = buildSlideContext(trainingId, slideIndex);
 
-        // 4. Generate grounded answer
-        String answer = generateAnswer(question, topFaqs, slideCtx, locale);
+        // 3. Generate grounded answer using the FAQs as direct context
+        String answer = generateAnswer(question, allFaqs, slideCtx, locale);
 
-        List<FaqSource> sources = topFaqs.stream()
+        List<FaqSource> sources = allFaqs.stream()
+                .limit(5) // Just show a few sources to the UI to keep it clean
                 .map(f -> new FaqSource(
                         localisedOrDefault(f.getQuestions(), locale),
                         localisedOrDefault(f.getAnswers(),   locale),
                         f.getSlideIndex()))
                 .toList();
 
-        return new AskResponse(answer, sources, !topFaqs.isEmpty());
-    }
-
-    // ── Retrieval ──────────────────────────────────────────────────────────────
-
-    private List<FAQ> retrieveTopK(List<FAQ> faqs, List<Double> qVec, String question) {
-        if (faqs.isEmpty()) return List.of();
-
-        if (qVec != null) {
-            // Semantic path — cosine similarity
-            return faqs.stream()
-                    .filter(f -> f.getEmbedding() != null && !f.getEmbedding().isEmpty())
-                    .map(f -> Map.entry(f, embeddingService.cosineSimilarity(qVec, f.getEmbedding())))
-                    .filter(e -> e.getValue() >= MIN_SIMILARITY)
-                    .sorted((a, b) -> Double.compare(b.getValue(), a.getValue()))
-                    .limit(TOP_K)
-                    .map(Map.Entry::getKey)
-                    .collect(Collectors.toList());
-        } else {
-            // Keyword fallback — simple substring on the English question
-            String lq = question.toLowerCase();
-            String prefix = lq.substring(0, Math.min(lq.length(), 25));
-            return faqs.stream()
-                    .filter(f -> f.getQuestions() != null
-                            && f.getQuestions().getOrDefault("en", "").toLowerCase().contains(prefix))
-                    .limit(TOP_K)
-                    .collect(Collectors.toList());
-        }
+        return new AskResponse(answer, sources, !allFaqs.isEmpty());
     }
 
     // ── Generation ─────────────────────────────────────────────────────────────

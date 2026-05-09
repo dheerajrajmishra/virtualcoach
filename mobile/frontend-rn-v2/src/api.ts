@@ -4,7 +4,12 @@ const CMS_HOST = Platform.OS === 'web'
   ? 'http://localhost:8080'
   : 'http://192.168.1.8:8080';
 
+const MOBILE_HOST = Platform.OS === 'web'
+  ? 'http://localhost:8081'
+  : 'http://192.168.1.8:8081';
+
 const BASE = `${CMS_HOST}/api`;
+const MOBILE_BASE = `${MOBILE_HOST}/api`;
 
 const HEADERS = { 'X-User-Id': 'learner-uid', 'Content-Type': 'application/json' };
 
@@ -62,11 +67,33 @@ export interface FaqSource   { question: string; answer: string; slideIndex: num
 export interface AskResponse { answer: string; sources: FaqSource[]; usedRag: boolean }
 
 export async function askFaq(trainingId: string, req: AskRequest): Promise<AskResponse> {
-  const res = await fetch(`${BASE}/trainings/${trainingId}/ask`, {
+  const res = await fetch(`${MOBILE_BASE}/learner/ask`, {
     method: 'POST',
     headers: HEADERS,
-    body: JSON.stringify(req),
+    body: JSON.stringify({
+      trainingId,
+      ...req
+    }),
   });
   if (!res.ok) throw new Error('FAQ service unavailable');
   return res.json();
+}
+
+export async function transcribeAudio(uri: string, locale: string): Promise<string> {
+  const formData = new FormData();
+  formData.append('audio', {
+    uri,
+    type: 'audio/m4a',
+    name: 'recording.m4a',
+  } as any);
+
+  const res = await fetch(`${MOBILE_BASE}/learner/transcribe?locale=${locale}`, {
+    method: 'POST',
+    headers: { 'X-User-Id': 'learner-uid' },
+    body: formData,
+  });
+
+  if (!res.ok) throw new Error('Transcription failed');
+  const data = await res.json();
+  return data.text || '';
 }

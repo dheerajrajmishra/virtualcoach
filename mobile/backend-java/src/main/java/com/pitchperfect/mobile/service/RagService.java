@@ -62,9 +62,11 @@ public class RagService {
     }
 
     private List<String> fetchRelevantFaqs(String trainingId, int slideIndex, String locale) {
-        return faqRepository.findByTrainingIdAndSlideIndex(trainingId, slideIndex)
+        // We now fetch ALL FAQs for the training to give the LLM full context, 
+        // but we still prioritize the current slide's context if it exists.
+        return faqRepository.findByTrainingId(trainingId)
                 .stream()
-                .limit(maxContextFaqs)
+                .limit(20) // Limit to 20 to avoid exceeding token limits while still being comprehensive
                 .map(faq -> {
                     String q = faq.getQuestions() != null
                             ? faq.getQuestions().getOrDefault(locale, faq.getQuestions().getOrDefault("en", ""))
@@ -72,7 +74,7 @@ public class RagService {
                     String a = faq.getAnswers() != null
                             ? faq.getAnswers().getOrDefault(locale, faq.getAnswers().getOrDefault("en", ""))
                             : "";
-                    return "Q: " + q + "\nA: " + a;
+                    return (faq.getSlideIndex() == slideIndex ? "[CURRENT SLIDE] " : "") + "Q: " + q + "\nA: " + a;
                 })
                 .collect(Collectors.toList());
     }

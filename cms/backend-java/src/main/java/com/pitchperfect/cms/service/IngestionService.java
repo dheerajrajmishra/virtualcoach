@@ -49,7 +49,6 @@ public class IngestionService {
     private final QuizRepository quizRepository;
     private final TranslationService translationService;
     private final AudioFactoryService audioFactoryService;
-    private final EmbeddingService embeddingService;
     private final StatusService statusService;
 
     @Value("${app.storage.type:local}")
@@ -163,10 +162,6 @@ public class IngestionService {
             slides = translationService.fillMissingTranslations(slides, trainingLocales);
             faqs = translationService.fillFaqTranslations(faqs, trainingLocales);
             quizzes = translationService.fillQuizTranslations(quizzes, trainingLocales);
-
-            // Generate semantic embeddings so RagService can do cosine-similarity retrieval
-            statusService.setStep(trainingId, "PROCESSING", "EMBEDDING_FAQS");
-            faqs = embeddingService.generateEmbeddings(faqs);
 
             slideRepository.saveAll(slides);
             faqRepository.saveAll(faqs);

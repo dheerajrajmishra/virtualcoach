@@ -7,6 +7,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import org.springframework.web.multipart.MultipartFile;
+
 import java.util.Map;
 
 @RestController
@@ -17,6 +19,7 @@ public class LearnerController {
 
     private final ProgressService progressService;
     private final RagService ragService;
+    private final com.pitchperfect.mobile.service.ElevenLabsSpeechService elevenLabsSpeechService;
 
     @GetMapping("/progress/{trainingId}")
     public ResponseEntity<LearnerProgress> getProgress(
@@ -47,5 +50,13 @@ public class LearnerController {
 
         String answer = ragService.answer(trainingId, slideIndex, question, locale);
         return ResponseEntity.ok(Map.of("answer", answer));
+    }
+
+    @PostMapping("/transcribe")
+    public ResponseEntity<Map<String, String>> transcribeAudio(
+            @RequestPart MultipartFile audio,
+            @RequestParam(defaultValue = "en") String locale) throws java.io.IOException {
+        String text = elevenLabsSpeechService.transcribe(audio.getBytes(), audio.getContentType(), locale);
+        return ResponseEntity.ok(Map.of("text", text));
     }
 }

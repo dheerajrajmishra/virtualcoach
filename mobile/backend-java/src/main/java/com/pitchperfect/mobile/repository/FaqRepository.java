@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface FaqRepository extends JpaRepository<FAQ, String> {
     List<FAQ> findByTrainingIdAndSlideIndex(String trainingId, int slideIndex);
+    List<FAQ> findByTrainingId(String trainingId);
 }
