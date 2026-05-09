@@ -374,7 +374,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   );
 
   const NavBar = () => (
-    <View style={[s.navBar, { paddingBottom: insets.bottom + 6 }]}>
+    <View style={[s.navBar, { paddingBottom: insets.bottom + 2 }]}>
       <TouchableOpacity style={[s.navBtn, currentIndex === 0 && s.navBtnOff]}
         onPress={() => goTo(currentIndex - 1)} disabled={currentIndex === 0}>
         <Text style={[s.navBtnTxt, currentIndex === 0 && s.navBtnTxtOff]}>‹ Prev</Text>
@@ -535,6 +535,14 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
             ))}
           </View>
 
+          {/* FAQ / AI Coach floating button — bottom-right, above audio bar */}
+          <TouchableOpacity
+            style={[s.fsFaqBtn, { bottom: insets.bottom + 80, right: insets.right + 16 }]}
+            onPress={() => { setShowChat(true); showFsControlsAndScheduleHide(); }}>
+            <Text style={s.fsFaqIcon}>❓</Text>
+            <Text style={s.fsFaqLabel}>FAQ</Text>
+          </TouchableOpacity>
+
           {/* Bottom audio controls — AudioTrack inlined to avoid sub-component remount */}
           <View style={[s.fsBottomBar, { paddingBottom: insets.bottom + 12, paddingHorizontal: insets.left + 14 }]}
             pointerEvents="box-none">
@@ -675,7 +683,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
                 ? <Text style={s.transcriptPanelTxt}>{transcript}</Text>
                 : <Text style={s.transcriptPanelEmpty}>No transcript for {locale.toUpperCase()}</Text>}
             </ScrollView>
-            <View style={[s.navBarLandscape, { paddingBottom: insets.bottom + 4 }]}>
+            <View style={[s.navBarLandscape, { paddingBottom: insets.bottom + 2 }]}>
               <TouchableOpacity style={[s.navBtn, currentIndex === 0 && s.navBtnOff]}
                 onPress={() => goTo(currentIndex - 1)} disabled={currentIndex === 0}>
                 <Text style={[s.navBtnTxt, currentIndex === 0 && s.navBtnTxtOff]}>‹ Prev</Text>
@@ -873,7 +881,7 @@ const s = StyleSheet.create({
   chipTxtAlt:    { color: '#6ee7b7' },
 
   // ── Nav bar ───────────────────────────────────────────────────────────────────
-  navBar:       { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111827', borderTopWidth: 1, borderTopColor: '#1f2937', paddingHorizontal: 12, paddingTop: 8 },
+  navBar:       { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111827', borderTopWidth: 1, borderTopColor: '#1f2937', paddingHorizontal: 12, paddingTop: 6 },
   navBtn:       { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#6366f1', borderRadius: 10 },
   navBtnOff:    { backgroundColor: '#1f2937' },
   navBtnTxt:    { color: '#fff', fontWeight: '700', fontSize: 13 },
@@ -884,7 +892,7 @@ const s = StyleSheet.create({
 
   // ── Bottom section ────────────────────────────────────────────────────────────
   bottomSection: { flex: 1, backgroundColor: '#0d1420' },
-  bottomContent: { paddingHorizontal: 16, paddingTop: 14, gap: 4 },
+  bottomContent: { paddingHorizontal: 16, paddingTop: 10, gap: 4 },
   countdownBanner:     { backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(99,102,241,0.4)', overflow: 'hidden' },
   countdownBar:        { height: 3, backgroundColor: '#2d3748' },
   countdownFill:       { position: 'absolute', top: 0, left: 0, bottom: 0, backgroundColor: '#6366f1' },
@@ -904,7 +912,7 @@ const s = StyleSheet.create({
   toggleThumbOn:       { alignSelf: 'flex-end' },
   bottomDivider:       { height: 1, backgroundColor: '#1a2235', marginVertical: 10 },
   transcriptToggleRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  transcriptSectionLabel:  { fontSize: 9, fontWeight: '800', color: '#374151', letterSpacing: 1 },
+  transcriptSectionLabel:  { fontSize: 9, fontWeight: '800', color: '#6366f1', letterSpacing: 1 },
   transcriptTogglePill:    { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: 'rgba(99,102,241,0.15)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.3)' },
   transcriptTogglePillTxt: { fontSize: 11, fontWeight: '700', color: '#818cf8' },
   transcriptFullTxt:       { fontSize: 14, color: '#94a3b8', lineHeight: 22 },
@@ -969,4 +977,15 @@ const s = StyleSheet.create({
   bigActionBtn: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(99,102,241,0.18)', borderWidth: 2, borderColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
   bigActionIcon:{ fontSize: 32 },
   altInputHint: { fontSize: 13, color: '#6b7280' },
+
+  // ── Fullscreen FAQ floating button ────────────────────────────────────────────
+  fsFaqBtn: {
+    position: 'absolute', width: 48, height: 48, borderRadius: 24,
+    backgroundColor: 'rgba(99,102,241,0.90)',
+    alignItems: 'center', justifyContent: 'center', gap: 1,
+    shadowColor: '#6366f1', shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.6, shadowRadius: 8, elevation: 10,
+  },
+  fsFaqIcon:  { fontSize: 20 },
+  fsFaqLabel: { fontSize: 8, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
 });

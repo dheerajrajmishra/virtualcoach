@@ -49,8 +49,14 @@ public class TrainingController {
     }
 
     @GetMapping
-    public ResponseEntity<List<Training>> listTrainings() {
-        List<Training> trainings = trainingRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+    public ResponseEntity<List<Training>> listTrainings(
+            @RequestParam(required = false, defaultValue = "false") boolean published) {
+
+        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
+        List<Training> trainings = published
+                ? trainingRepository.findByStatusAndPublishedAtIsNotNull("READY", sort)
+                : trainingRepository.findAll(sort);
+
         trainings.forEach(t -> {
             if (t.getTotalSlides() == 0) {
                 t.setTotalSlides((int) slideRepository.countByTrainingId(t.getId()));

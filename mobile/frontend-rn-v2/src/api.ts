@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 
 const CMS_HOST = Platform.OS === 'web'
   ? 'http://localhost:8080'
-  : 'http://192.168.1.3:8080';
+  : 'http://192.168.1.8:8080';
 
 const BASE = `${CMS_HOST}/api`;
 
@@ -46,7 +46,7 @@ export interface Slide {
 }
 
 export async function fetchTrainings(): Promise<Training[]> {
-  const res = await fetch(`${BASE}/trainings`, { headers: HEADERS });
+  const res = await fetch(`${BASE}/trainings?published=true`, { headers: HEADERS });
   if (!res.ok) throw new Error('Failed to load trainings');
   return res.json();
 }
