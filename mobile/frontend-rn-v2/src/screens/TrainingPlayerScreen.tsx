@@ -112,6 +112,9 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   const [quizAnswer, setQuizAnswer]             = useState('');
   const [quizResult, setQuizResult]             = useState<EvalResult | null>(null);
   const [quizSubmitting, setQuizSubmitting]     = useState(false);
+  const [quizIsRecording, setQuizIsRecording]   = useState(false);
+  const [quizTranscribing, setQuizTranscribing] = useState(false);
+  const quizRecordingRef                        = useRef<Audio.Recording | null>(null);
   const [pendingNavTo, setPendingNavTo]         = useState<number | null>(null);
 
   const slide         = slides[currentIndex];
@@ -292,6 +295,11 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   }
 
   function dismissQuiz() {
+    if (quizRecordingRef.current) {
+      quizRecordingRef.current.stopAndUnloadAsync().catch(() => {});
+      quizRecordingRef.current = null;
+      setQuizIsRecording(false);
+    }
     const navTo = pendingNavTo;
     const idx   = activeQuiz?.slideIndex ?? currentIndex;
     setShowQuiz(false);
@@ -323,6 +331,37 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     } catch { /* no quiz data — navigate directly */ }
     setShowTranscript(false);
     setCurrentIndex(targetIndex);
+  }
+
+  async function startQuizRecording() {
+    try {
+      const perm = await Audio.requestPermissionsAsync();
+      if (perm.status !== 'granted') { alert('Microphone permission is required.'); return; }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      quizRecordingRef.current = recording;
+      setQuizIsRecording(true);
+    } catch { /* permission denied or device error */ }
+  }
+
+  async function stopQuizRecording() {
+    setQuizIsRecording(false);
+    if (!quizRecordingRef.current) return;
+    try {
+      await quizRecordingRef.current.stopAndUnloadAsync();
+      const uri = quizRecordingRef.current.getURI();
+      quizRecordingRef.current = null;
+      if (uri) {
+        setQuizTranscribing(true);
+        const text = await transcribeAudio(uri, locale);
+        if (text) setQuizAnswer(prev => (prev.trim() ? prev.trim() + ' ' + text : text));
+      }
+    } catch { /* transcription error — keep existing answer */ }
+    finally { setQuizTranscribing(false); }
+  }
+
+  function toggleQuizRecording() {
+    if (quizIsRecording) stopQuizRecording(); else startQuizRecording();
   }
 
   async function submitQuiz() {
@@ -851,23 +890,46 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
           ) : (
             <View style={s.quizBody}>
               <Text style={s.quizQuestion}>{activeQuiz?.question}</Text>
+
+              {/* Voice input */}
+              <TouchableOpacity
+                style={[s.quizMicBtn, quizIsRecording && s.quizMicBtnActive]}
+                onPress={toggleQuizRecording}
+                disabled={quizTranscribing}>
+                {quizTranscribing
+                  ? <ActivityIndicator color="#6366f1" size="small" />
+                  : <Text style={s.quizMicIcon}>{quizIsRecording ? '⏹' : '🎤'}</Text>}
+                <Text style={[s.quizMicTxt, quizIsRecording && s.quizMicTxtActive]}>
+                  {quizTranscribing
+                    ? 'Transcribing…'
+                    : quizIsRecording
+                      ? 'Recording… tap to stop'
+                      : 'Tap to answer by voice'}
+                </Text>
+                {quizIsRecording && <View style={s.quizRecDot} />}
+              </TouchableOpacity>
+
+              {/* Text input */}
               <TextInput
                 style={s.quizInput}
                 value={quizAnswer}
                 onChangeText={setQuizAnswer}
-                placeholder="Type your answer here…"
+                placeholder="Or type your answer here…"
                 placeholderTextColor="#4b5563"
                 multiline
                 maxLength={1000}
+                editable={!quizIsRecording && !quizTranscribing}
               />
+
               <View style={s.quizActions}>
                 <TouchableOpacity style={s.quizSkipBtn} onPress={dismissQuiz}>
                   <Text style={s.quizSkipTxt}>Skip</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[s.quizSubmitBtn, (!quizAnswer.trim() || quizSubmitting) && s.quizSubmitOff]}
+                  style={[s.quizSubmitBtn,
+                    (!quizAnswer.trim() || quizSubmitting || quizIsRecording || quizTranscribing) && s.quizSubmitOff]}
                   onPress={submitQuiz}
-                  disabled={!quizAnswer.trim() || quizSubmitting}>
+                  disabled={!quizAnswer.trim() || quizSubmitting || quizIsRecording || quizTranscribing}>
                   {quizSubmitting
                     ? <ActivityIndicator color="#fff" size="small" />
                     : <Text style={s.quizSubmitTxt}>Submit</Text>}
@@ -1264,4 +1326,10 @@ const s = StyleSheet.create({
   quizSubmitBtn:     { flex: 2, backgroundColor: '#6366f1', borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
   quizSubmitOff:     { backgroundColor: '#374151' },
   quizSubmitTxt:     { fontSize: 14, fontWeight: '700', color: '#fff' },
+  quizMicBtn:        { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#1f2937', borderRadius: 12, paddingVertical: 13, paddingHorizontal: 14, borderWidth: 1.5, borderColor: '#374151' },
+  quizMicBtnActive:  { backgroundColor: 'rgba(239,68,68,0.12)', borderColor: '#ef4444' },
+  quizMicIcon:       { fontSize: 18 },
+  quizMicTxt:        { fontSize: 13, color: '#9ca3af', flex: 1 },
+  quizMicTxtActive:  { color: '#ef4444' },
+  quizRecDot:        { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444' },
 });
