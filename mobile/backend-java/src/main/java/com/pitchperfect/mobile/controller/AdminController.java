@@ -1,6 +1,8 @@
 package com.pitchperfect.mobile.controller;
 
+import com.pitchperfect.mobile.model.EvaluationResult;
 import com.pitchperfect.mobile.model.UnansweredQuestion;
+import com.pitchperfect.mobile.repository.EvaluationResultRepository;
 import com.pitchperfect.mobile.repository.UnansweredQuestionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
@@ -18,8 +20,10 @@ import java.util.stream.Collectors;
 public class AdminController {
 
     private final UnansweredQuestionRepository unansweredQuestionRepository;
+    private final EvaluationResultRepository evaluationResultRepository;
 
-    private static final Sort NEWEST_FIRST = Sort.by(Sort.Direction.DESC, "askedAt");
+    private static final Sort NEWEST_FIRST     = Sort.by(Sort.Direction.DESC, "askedAt");
+    private static final Sort EVAL_NEWEST_FIRST = Sort.by(Sort.Direction.DESC, "evaluatedAt");
 
     /** All unreviewed questions, newest first. Optionally filter by trainingId. */
     @GetMapping("/unanswered-questions")
@@ -54,5 +58,29 @@ public class AdminController {
                     return ResponseEntity.ok(unansweredQuestionRepository.save(q));
                 })
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    /** All evaluation results, newest first. Optionally filter by trainingId. */
+    @GetMapping("/evaluations")
+    public ResponseEntity<List<EvaluationResult>> listEvaluations(
+            @RequestParam(required = false) String trainingId) {
+
+        List<EvaluationResult> results = trainingId != null
+                ? evaluationResultRepository.findByTrainingId(trainingId, EVAL_NEWEST_FIRST)
+                : evaluationResultRepository.findAllByOrderByEvaluatedAtDesc();
+        return ResponseEntity.ok(results);
+    }
+
+    /** Per-training average score summary. */
+    @GetMapping("/evaluations/summary")
+    public ResponseEntity<List<Map<String, Object>>> evalSummary() {
+        List<Map<String, Object>> rows = evaluationResultRepository.avgScoreByTraining()
+                .stream()
+                .map(r -> Map.<String, Object>of(
+                        "trainingId",    r[0],
+                        "avgScore",      Math.round((double) r[1]),
+                        "submissions",   r[2]))
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(rows);
     }
 }

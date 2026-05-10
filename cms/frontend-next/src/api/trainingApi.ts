@@ -26,6 +26,7 @@ export interface Training {
   category: string
   product: string
   status: string
+  totalSlides: number
   supportedLocales: string[]
   processingStep: string | null
   processingError: string | null
@@ -35,6 +36,49 @@ export interface Training {
   createdBy: string
   createdAt: string
   updatedAt: string
+}
+
+export interface Assignment {
+  id: string
+  userId: string
+  trainingId: string
+  product: string
+  status: 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE'
+  deadline: string
+  assignedAt: string
+  assignedBy: string
+}
+
+export interface UnansweredQuestion {
+  id: string
+  trainingId: string
+  userId: string
+  slideIndex: number
+  locale: string
+  question: string
+  aiResponse: string
+  askedAt: string
+  reviewed: boolean
+}
+
+export interface EvaluationResult {
+  submissionId: string
+  quizId: string
+  userId: string
+  trainingId: string
+  score: number
+  maxScore: number
+  scorePercent: number
+  feedback: string
+  strengths: string
+  improvements: string
+  evaluatedAt: string
+}
+
+export interface EvalSummary {
+  trainingId: string
+  avgScore: number
+  submissions: number
 }
 
 export function useTrainings() {
@@ -195,6 +239,57 @@ export function useCreateAssignment() {
       return data
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['assignments'] }),
+  })
+}
+
+// ── Mobile backend (unanswered FAQ questions) ─────────────────────────────────
+
+const MOBILE_BASE = process.env.NEXT_PUBLIC_MOBILE_API_URL ?? 'http://localhost:8081/api'
+const mobileApi = axios.create({ baseURL: MOBILE_BASE })
+mobileApi.interceptors.request.use((c) => { c.headers['X-User-Id'] = 'admin-user'; return c })
+
+export function useUnansweredQuestions(trainingId?: string) {
+  return useQuery<UnansweredQuestion[]>({
+    queryKey: ['unanswered-questions', trainingId],
+    queryFn: async () => {
+      const { data } = await mobileApi.get('/admin/unanswered-questions', {
+        params: trainingId ? { trainingId } : undefined,
+      })
+      return data
+    },
+  })
+}
+
+export function useMarkReviewed() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await mobileApi.patch(`/admin/unanswered-questions/${id}/reviewed`)
+      return data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['unanswered-questions'] }),
+  })
+}
+
+export function useEvaluationResults(trainingId?: string) {
+  return useQuery<EvaluationResult[]>({
+    queryKey: ['evaluations', trainingId],
+    queryFn: async () => {
+      const { data } = await mobileApi.get('/admin/evaluations', {
+        params: trainingId ? { trainingId } : undefined,
+      })
+      return data
+    },
+  })
+}
+
+export function useEvalSummary() {
+  return useQuery<EvalSummary[]>({
+    queryKey: ['eval-summary'],
+    queryFn: async () => {
+      const { data } = await mobileApi.get('/admin/evaluations/summary')
+      return data
+    },
   })
 }
 

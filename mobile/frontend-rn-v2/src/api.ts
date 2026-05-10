@@ -120,6 +120,91 @@ export async function submitQuizText(
   return res.json();
 }
 
+export interface LearnerProgress {
+  id: string
+  userId: string
+  trainingId: string
+  assignmentId: string | null
+  currentSlideIndex: number
+  totalSlides: number
+  completionPercent: number
+  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED'
+  startedAt: string | null
+  lastAccessedAt: string | null
+  completedAt: string | null
+  preferredLocale: string
+}
+
+export interface AssignmentItem {
+  id: string
+  userId: string
+  trainingId: string
+  product: string
+  status: string
+  deadline: string
+  assignedAt: string
+  assignedBy: string
+}
+
+export async function fetchMyAssignments(userId: string): Promise<AssignmentItem[]> {
+  try {
+    const res = await fetch(`${BASE}/assignments?userId=${encodeURIComponent(userId)}`, { headers: HEADERS });
+    if (!res.ok) return [];
+    return res.json();
+  } catch { return []; }
+}
+
+export async function fetchAllProgress(): Promise<LearnerProgress[]> {
+  try {
+    const res = await fetch(`${MOBILE_BASE}/learner/all-progress`, { headers: HEADERS });
+    if (!res.ok) return [];
+    return res.json();
+  } catch { return []; }
+}
+
+export async function initProgress(trainingId: string, assignmentId: string): Promise<LearnerProgress | null> {
+  try {
+    const res = await fetch(
+      `${MOBILE_BASE}/learner/progress/${trainingId}?assignmentId=${encodeURIComponent(assignmentId)}`,
+      { headers: HEADERS },
+    );
+    if (!res.ok) return null;
+    return res.json();
+  } catch { return null; }
+}
+
+export async function updateProgress(trainingId: string, slideIndex: number, totalSlides: number): Promise<void> {
+  try {
+    await fetch(`${MOBILE_BASE}/learner/progress/${trainingId}/slide`, {
+      method: 'PATCH',
+      headers: HEADERS,
+      body: JSON.stringify({ slideIndex, totalSlides }),
+    });
+  } catch { /* non-fatal */ }
+}
+
+export async function resetProgress(trainingId: string): Promise<LearnerProgress | null> {
+  try {
+    const res = await fetch(`${MOBILE_BASE}/learner/progress/${trainingId}/reset`, {
+      method: 'POST',
+      headers: HEADERS,
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch { return null; }
+}
+
+export async function markTrainingComplete(trainingId: string): Promise<LearnerProgress | null> {
+  try {
+    const res = await fetch(`${MOBILE_BASE}/learner/progress/${trainingId}/complete`, {
+      method: 'POST',
+      headers: HEADERS,
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch { return null; }
+}
+
 export async function fetchFaqHints(trainingId: string, locale: string): Promise<string[]> {
   try {
     const res = await fetch(`${MOBILE_BASE}/learner/faq-hints/${trainingId}?locale=${locale}`, { headers: HEADERS });

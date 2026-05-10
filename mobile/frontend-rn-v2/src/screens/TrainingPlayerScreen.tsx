@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio, AVPlaybackStatus } from 'expo-av';
-import { fetchSlides, resolveMediaUrl, askFaq, transcribeAudio, fetchQuiz, submitQuizText, fetchFaqHints, QuizQuestion, EvalResult, Slide, Training } from '../api';
+import { fetchSlides, resolveMediaUrl, askFaq, transcribeAudio, fetchQuiz, submitQuizText, fetchFaqHints, updateProgress, markTrainingComplete, QuizQuestion, EvalResult, Slide, Training } from '../api';
 
 if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
 
@@ -46,9 +46,9 @@ function CompressIcon({ size, color }: { size: number; color: string }) {
 }
 
 interface ChatMessage { id: string; role: 'user' | 'assistant'; text: string }
-interface Props { training: Training; onBack: () => void }
+interface Props { training: Training; assignmentId?: string; isReview?: boolean; initialSlide?: number; onBack: () => void }
 
-export default function TrainingPlayerScreen({ training, onBack }: Props) {
+export default function TrainingPlayerScreen({ training, assignmentId, isReview = false, initialSlide = 0, onBack }: Props) {
   const { width: W, height: H } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isLandscape = W > H;
@@ -57,7 +57,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   const [slides, setSlides]                 = useState<Slide[]>([]);
   const [loadingSlides, setLoadingSlides]   = useState(true);
   const [slideError, setSlideError]         = useState<string | null>(null);
-  const [currentIndex, setCurrentIndex]     = useState(0);
+  const [currentIndex, setCurrentIndex]     = useState(initialSlide);
   const [locale, setLocale]                 = useState(training.supportedLocales?.[0] ?? 'en');
   const [showTranscript, setShowTranscript] = useState(false);
   const [imageError, setImageError]         = useState(false);
@@ -86,6 +86,12 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   const slidesLenRef                        = useRef(0);
   useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
   useEffect(() => { slidesLenRef.current = slides.length; }, [slides.length]);
+
+  useEffect(() => {
+    if (slides.length === 0 || loadingSlides || isReview) return;
+    updateProgress(training.id, currentIndex + 1, slides.length);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, slides.length, loadingSlides]);
 
   useEffect(() => {
     StatusBar.setHidden(isFullscreen, 'fade');
@@ -117,6 +123,16 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   const [quizTranscribing, setQuizTranscribing] = useState(false);
   const quizRecordingRef                        = useRef<Audio.Recording | null>(null);
   const [pendingNavTo, setPendingNavTo]         = useState<number | null>(null);
+  const [completing, setCompleting]             = useState(false);
+
+  const isLastSlide = slides.length > 0 && currentIndex === slides.length - 1 && !isReview;
+
+  async function handleComplete() {
+    setCompleting(true);
+    await markTrainingComplete(training.id);
+    setCompleting(false);
+    onBack();
+  }
 
   const slide         = slides[currentIndex];
   const slideProgress = slides.length > 0 ? (currentIndex + 1) / slides.length : 0;
@@ -291,7 +307,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   }
 
   function toggleTranscriptOverlay() {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    // LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); // Buggy in New Architecture
     setShowTranscript(o => !o);
   }
 
@@ -484,149 +500,158 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   }
 
   // ── AI Coach FAQ Button (Consistent across all stages) ─────────────────────
-  const AskAIBtn = ({ style, onPress, compact = false }: { style?: any, onPress?: () => void, compact?: boolean }) => (
-    <TouchableOpacity
-      style={[s.askAiBtn, compact && s.askAiBtnCompact, style]}
-      onPress={onPress || openChat}
-      activeOpacity={0.85}>
-      <Text style={[s.askAiIcon, compact && s.askAiIconCompact]}>🤖</Text>
-      <Text style={[s.askAiLabel, compact && s.askAiLabelCompact]}>Ask AI</Text>
-    </TouchableOpacity>
-  );
+  // ── Helper Renders (Avoid defining components inside components) ──────────
+  function renderAskAIBtn({ style, onPress, compact = false }: { style?: any, onPress?: () => void, compact?: boolean } = {}) {
+    return (
+      <TouchableOpacity
+        style={[s.askAiBtn, compact && s.askAiBtnCompact, style]}
+        onPress={onPress || openChat}
+        activeOpacity={0.85}>
+        <Text style={[s.askAiIcon, compact && s.askAiIconCompact]}>🤖</Text>
+        <Text style={[s.askAiLabel, compact && s.askAiLabelCompact]}>Ask AI</Text>
+      </TouchableOpacity>
+    );
+  }
 
-  const SlideImage = ({ height }: { height?: number }) => (
-    <View style={[s.imgWrap, { width: isLandscape ? (rightPanelCollapsed ? W : W * 0.56) : W }, height ? { height } : { flex: 1 }]}
-      {...swipeResponder.panHandlers}>
-      <ScrollView
-        maximumZoomScale={5}
-        minimumZoomScale={1}
-        showsHorizontalScrollIndicator={false}
-        showsVerticalScrollIndicator={false}
-        centerContent={true}
-        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
-      >
-        {imageUrl && !imageError ? (
-          <Image source={{ uri: imageUrl }} 
-            style={{ 
-              width: isLandscape ? (rightPanelCollapsed ? W : W * 0.56) : W, 
-              height: height ?? (isLandscape ? H : H * 0.6) 
-            }} 
-            resizeMode="contain"
-            onError={() => setImageError(true)} />
-        ) : (
-          <View style={[s.imgFallback, { width: W, height: height ?? 250 }]}>
-            <Text style={s.imgFallbackIcon}>🖼</Text>
-            <Text style={s.imgFallbackTxt}>{imageError ? 'Could not load image' : 'No image'}</Text>
-            {imageError && imageUrl ? <Text style={s.debugUrl} numberOfLines={2}>{imageUrl}</Text> : null}
-          </View>
-        )}
-      </ScrollView>
-      <View style={s.counterOverlay}>
-        {!isLandscape && (
-          <TouchableOpacity style={s.transcriptIconBtnOverlay} onPress={() => setShowBottomTranscript(o => !o)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Text style={s.transcriptIconTxtOverlay}>📝</Text>
-          </TouchableOpacity>
-        )}
-        <View style={s.autoPlayMiniWrapper}>
-          <Text style={s.autoPlayMiniLabel}>AUTO</Text>
-          <TouchableOpacity style={[s.toggleMini, autoPlay && s.toggleMiniOn]}
-            onPress={() => { if (autoPlay) cancelAutoAdvance(); setAutoPlay(o => !o); }} activeOpacity={0.8}>
-            <View style={[s.toggleThumbMini, autoPlay && s.toggleThumbMiniOn]} />
-          </TouchableOpacity>
-        </View>
-        <Text style={s.counterTxt}>{currentIndex + 1} / {slides.length}</Text>
-        <TouchableOpacity style={s.fsIconBtn} onPress={enterFullscreen} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <ExpandIcon size={14} color="#fff" />
-        </TouchableOpacity>
-      </View>
-      {isLandscape && (
-        <TouchableOpacity style={s.collapseToggleBtn} onPress={() => setRightPanelCollapsed(!rightPanelCollapsed)}>
-          <Text style={s.collapseToggleTxt}>{rightPanelCollapsed ? '◂ Show Info' : 'Hide Info ▸'}</Text>
-        </TouchableOpacity>
-      )}
-      {showTranscript && (
-        <ScrollView style={s.transcriptOverlay} showsVerticalScrollIndicator={false}
-          contentContainerStyle={s.transcriptOverlayContent}>
-          <Text style={s.transcriptOverlayTxt}>
-            {transcript ?? `No transcript for ${locale.toUpperCase()}`}
-          </Text>
+  function renderSlideImage({ height }: { height?: number } = {}) {
+    return (
+      <View style={[s.imgWrap, { width: isLandscape ? (rightPanelCollapsed ? W : W * 0.56) : W }, height ? { height } : { flex: 1 }]}
+        {...swipeResponder.panHandlers}>
+        <ScrollView
+          maximumZoomScale={5}
+          minimumZoomScale={1}
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          centerContent={true}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+        >
+          {imageUrl && !imageError ? (
+            <Image source={{ uri: imageUrl }} 
+              style={{ 
+                width: isLandscape ? (rightPanelCollapsed ? W : W * 0.56) : W, 
+                height: height ?? (isLandscape ? H : H * 0.6) 
+              }} 
+              resizeMode="contain"
+              onError={() => setImageError(true)} />
+          ) : (
+            <View style={[s.imgFallback, { width: W, height: height ?? 250 }]}>
+              <Text style={s.imgFallbackIcon}>🖼</Text>
+              <Text style={s.imgFallbackTxt}>{imageError ? 'Could not load image' : 'No image'}</Text>
+              {imageError && imageUrl ? <Text style={s.debugUrl} numberOfLines={2}>{imageUrl}</Text> : null}
+            </View>
+          )}
         </ScrollView>
-      )}
-      {!isLandscape && <NavBar />}
-    </View>
-  );
-
-
-  const NavBar = () => (
-    <View style={[s.navBar, { bottom: showBottomTranscript ? 16 : insets.bottom + 16 }]}>
-      <TouchableOpacity style={[s.navBtn, currentIndex === 0 && s.navBtnOff]}
-        onPress={() => goTo(currentIndex - 1)} disabled={currentIndex === 0}>
-        <Text style={[s.navBtnTxt, currentIndex === 0 && s.navBtnTxtOff]}>‹ Prev</Text>
-      </TouchableOpacity>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.dotsRow}>
-        {slides.map((_, i) => (
-          <TouchableOpacity key={i} onPress={() => goTo(i)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
-            <View style={[s.dot, i === currentIndex && s.dotActive]} />
+        <View style={s.counterOverlay}>
+          {!isLandscape && (
+            <TouchableOpacity style={s.transcriptIconBtnOverlay} onPress={() => setShowBottomTranscript(o => !o)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={s.transcriptIconTxtOverlay}>📝</Text>
+            </TouchableOpacity>
+          )}
+          <View style={s.autoPlayMiniWrapper}>
+            <Text style={s.autoPlayMiniLabel}>AUTO</Text>
+            <TouchableOpacity style={[s.toggleMini, autoPlay && s.toggleMiniOn]}
+              onPress={() => { if (autoPlay) cancelAutoAdvance(); setAutoPlay(o => !o); }} activeOpacity={0.8}>
+              <View style={[s.toggleThumbMini, autoPlay && s.toggleThumbMiniOn]} />
+            </TouchableOpacity>
+          </View>
+          <Text style={s.counterTxt}>{currentIndex + 1} / {slides.length}</Text>
+          <TouchableOpacity style={s.fsIconBtn} onPress={enterFullscreen} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <ExpandIcon size={14} color="#fff" />
           </TouchableOpacity>
-        ))}
-      </ScrollView>
-      <TouchableOpacity style={[s.navBtn, currentIndex === slides.length - 1 && s.navBtnOff]}
-        onPress={goForward} disabled={currentIndex === slides.length - 1}>
-        <Text style={[s.navBtnTxt, currentIndex === slides.length - 1 && s.navBtnTxtOff]}>Next ›</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
-
-
-
-
-  const Header = ({ compact = false }) => (
-    <View style={[
-      s.header,
-      { paddingTop: insets.top + (compact ? 2 : 6), paddingLeft: insets.left + 14, paddingRight: insets.right + 8 },
-      compact && s.headerCompact,
-    ]}>
-      <View style={s.headerRow}>
-        <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Text style={s.backArrow}>←</Text>
-        </TouchableOpacity>
-        <Text style={s.headerTitle} numberOfLines={1}>{slide?.title || training.name}</Text>
-        {(training.supportedLocales ?? []).length > 1 && (
-          <TouchableOpacity
-            style={[s.fsLangBtn, showLangPicker && s.fsLangBtnActive]}
-            onPress={() => setShowLangPicker(o => !o)}>
-            <Text style={s.fsLangBtnIcon}>🌐</Text>
-            <Text style={s.fsLangBtnTxt}>{locale.toUpperCase()}</Text>
+        </View>
+        {isLandscape && (
+          <TouchableOpacity style={s.collapseToggleBtn} onPress={() => setRightPanelCollapsed(!rightPanelCollapsed)}>
+            <Text style={s.collapseToggleTxt}>{rightPanelCollapsed ? '◂ Show Info' : 'Hide Info ▸'}</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity onPress={togglePlay} disabled={audioLoading || !audioUrl}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          style={[s.headerPlayBtn, isPlaying && s.headerPlayActive]}>
-          {audioLoading
-            ? <ActivityIndicator color={isPlaying ? '#6366f1' : '#fff'} size="small" />
-            : <Text style={[s.headerPlayIcon, isPlaying && s.headerPlayIconActive]}>{!audioUrl ? '🔇' : isPlaying ? '⏸' : '▶'}</Text>}
+        {showTranscript && (
+          <ScrollView style={s.transcriptOverlay} showsVerticalScrollIndicator={false}
+            contentContainerStyle={s.transcriptOverlayContent}>
+            <Text style={s.transcriptOverlayTxt}>
+              {transcript ?? `No transcript for ${locale.toUpperCase()}`}
+            </Text>
+          </ScrollView>
+        )}
+        {!isLandscape && renderNavBar()}
+      </View>
+    );
+  }
+
+
+  function renderNavBar() {
+    return (
+      <View style={[s.navBar, { bottom: showBottomTranscript ? 16 : insets.bottom + 16 }]}>
+        <TouchableOpacity style={[s.navBtn, currentIndex === 0 && s.navBtnOff]}
+          onPress={() => goTo(currentIndex - 1)} disabled={currentIndex === 0}>
+          <Text style={[s.navBtnTxt, currentIndex === 0 && s.navBtnTxtOff]}>‹ Prev</Text>
+        </TouchableOpacity>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.dotsRow}>
+          {slides.map((sl, i) => (
+            <TouchableOpacity key={sl.id || i} onPress={() => goTo(i)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+              <View style={[s.dot, i === currentIndex && s.dotActive]} />
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <TouchableOpacity style={[s.navBtn, currentIndex === slides.length - 1 && s.navBtnOff]}
+          onPress={goForward} disabled={currentIndex === slides.length - 1}>
+          <Text style={[s.navBtnTxt, currentIndex === slides.length - 1 && s.navBtnTxtOff]}>Next ›</Text>
         </TouchableOpacity>
       </View>
-      {showLangPicker && (
-        <View style={s.headerLangPanel}>
-          <Text style={s.fsLangPickerLabel}>AUDIO LANGUAGE</Text>
-          <View style={s.fsLangPillRow}>
-            {(training.supportedLocales ?? []).map(l => (
-              <TouchableOpacity key={l}
-                style={[s.fsLangPill, locale === l && s.fsLangPillActive]}
-                onPress={() => { setLocale(l); setShowLangPicker(false); }}>
-                <Text style={[s.fsLangPillTxt, locale === l && s.fsLangPillTxtActive]}>
-                  {l.toUpperCase()}
-                </Text>
-                {locale === l && <Text style={s.fsLangPillCheck}>✓</Text>}
-              </TouchableOpacity>
-            ))}
-          </View>
+    );
+  }
+
+
+
+
+
+  function renderHeader({ compact = false }: { compact?: boolean } = {}) {
+    return (
+      <View style={[
+        s.header,
+        { paddingTop: insets.top + (compact ? 2 : 6), paddingLeft: insets.left + 14, paddingRight: insets.right + 8 },
+        compact && s.headerCompact,
+      ]}>
+        <View style={s.headerRow}>
+          <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <Text style={s.backArrow}>←</Text>
+          </TouchableOpacity>
+          <Text style={s.headerTitle} numberOfLines={1}>{slide?.title || training.name}</Text>
+          {(training.supportedLocales ?? []).length > 1 && (
+            <TouchableOpacity
+              style={[s.fsLangBtn, showLangPicker && s.fsLangBtnActive]}
+              onPress={() => setShowLangPicker(o => !o)}>
+              <Text style={s.fsLangBtnIcon}>🌐</Text>
+              <Text style={s.fsLangBtnTxt}>{locale.toUpperCase()}</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={togglePlay} disabled={audioLoading || !audioUrl}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={[s.headerPlayBtn, isPlaying && s.headerPlayActive]}>
+            {audioLoading
+              ? <ActivityIndicator color={isPlaying ? '#6366f1' : '#fff'} size="small" />
+              : <Text style={[s.headerPlayIcon, isPlaying && s.headerPlayIconActive]}>{!audioUrl ? '🔇' : isPlaying ? '⏸' : '▶'}</Text>}
+          </TouchableOpacity>
         </View>
-      )}
-    </View>
-  );
+        {showLangPicker && (
+          <View style={s.headerLangPanel}>
+            <Text style={s.fsLangPickerLabel}>AUDIO LANGUAGE</Text>
+            <View style={s.fsLangPillRow}>
+              {(training.supportedLocales ?? []).map(l => (
+                <TouchableOpacity key={l}
+                  style={[s.fsLangPill, locale === l && s.fsLangPillActive]}
+                  onPress={() => { setLocale(l); setShowLangPicker(false); }}>
+                  <Text style={[s.fsLangPillTxt, locale === l && s.fsLangPillTxtActive]}>
+                    {l.toUpperCase()}
+                  </Text>
+                  {locale === l && <Text style={s.fsLangPillCheck}>✓</Text>}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+      </View>
+    );
+  }
 
   // ── FULLSCREEN MODAL ───────────────────────────────────────────────────────
   const fsModal = (
@@ -636,7 +661,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
       statusBarTranslucent
       onRequestClose={exitFullscreen}>
 
-      <View style={s.fsRoot} {...swipeResponder.panHandlers}>
+      <View style={s.fsRoot} {...(isFullscreen ? swipeResponder.panHandlers : {})}>
         <View style={[StyleSheet.absoluteFill, s.fsBg]} />
 
         {imageUrl && !imageError ? (
@@ -665,7 +690,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
 
         {/* Controls overlay — opacity-driven, no remount */}
         <View
-          style={[StyleSheet.absoluteFill, { opacity: showFsControls ? 1 : 0 }]}
+          style={[s.fsOverlayContainer, { opacity: showFsControls ? 1 : 0 }]}
           pointerEvents={showFsControls ? 'box-none' : 'none'}>
 
           {/* Top bar */}
@@ -730,10 +755,10 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
           </View>
 
           {/* FAQ Button */}
-          <AskAIBtn
-            style={{ position: 'absolute', bottom: insets.bottom + 80, right: insets.right + 16 }}
-            onPress={() => { openChat(); showFsControlsAndScheduleHide(); }}
-          />
+          {renderAskAIBtn({
+            style: { position: 'absolute', bottom: insets.bottom + 80, right: insets.right + 16 },
+            onPress: () => { openChat(); showFsControlsAndScheduleHide(); }
+          })}
 
           {/* Bottom audio bar — AudioTrack inlined to avoid sub-component remount */}
           <View style={[s.fsBottomBar, { paddingBottom: insets.bottom + 12, paddingHorizontal: insets.left + 14 }]}
@@ -771,9 +796,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
 
 
 
-  const fab = (
-    <AskAIBtn style={{ position: 'absolute', right: 16, bottom: insets.bottom + 72 }} />
-  );
+  const fab = renderAskAIBtn({ style: { position: 'absolute', right: 16, bottom: insets.bottom + 72 } });
 
   // ── Chat / FAQ modal (Minimalist Redesign) ───────────────────────────────
   const chatModal = (
@@ -959,9 +982,9 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     const imgH = H - insets.top - insets.bottom;
     return (
       <View style={s.root}>
-        <Header compact />
+        {renderHeader({ compact: true })}
         <View style={s.landscapeBody}>
-          <SlideImage height={imgH} />
+          {renderSlideImage({ height: imgH })}
           {!rightPanelCollapsed && (
             <View style={[s.rightPanel, { paddingRight: insets.right + 10 }]}>
               <View style={s.rightTop}>
@@ -969,7 +992,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
                   {slide?.title
                     ? <Text style={s.slideTitleLandscape} numberOfLines={2}>{slide.title}</Text>
                     : <View style={{ flex: 1 }} />}
-                  <AskAIBtn compact />
+                  {renderAskAIBtn({ compact: true })}
                 </View>
               </View>
               <View style={s.rightDivider} />
@@ -986,8 +1009,8 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
                   <Text style={[s.navBtnTxt, currentIndex === 0 && s.navBtnTxtOff]}>‹ Prev</Text>
                 </TouchableOpacity>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.dotsRow}>
-                  {slides.map((_, i) => (
-                    <TouchableOpacity key={i} onPress={() => goTo(i)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+                  {slides.map((sl, i) => (
+                    <TouchableOpacity key={sl.id || i} onPress={() => goTo(i)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
                       <View style={[s.dot, i === currentIndex && s.dotActive]} />
                     </TouchableOpacity>
                   ))}
@@ -997,6 +1020,20 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
                   <Text style={[s.navBtnTxt, currentIndex === slides.length - 1 && s.navBtnTxtOff]}>Next ›</Text>
                 </TouchableOpacity>
               </View>
+              {isLastSlide && (
+                <View style={{ paddingHorizontal: 14, paddingBottom: insets.bottom + 12, paddingTop: 8 }}>
+                  <TouchableOpacity
+                    style={[s.completeBtn, completing && s.completeBtnOff]}
+                    onPress={handleComplete}
+                    disabled={completing}
+                    activeOpacity={0.85}
+                  >
+                    {completing
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <Text style={s.completeBtnTxt}>✓  Complete Training</Text>}
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           )}
         </View>
@@ -1012,8 +1049,8 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
   // ══════════════════════════════════════════════════════════════════════════
   return (
     <View style={s.root}>
-      <Header />
-      <SlideImage />
+      {renderHeader()}
+      {renderSlideImage()}
 
       {autoAdvanceSec !== null && (
         <View style={s.countdownFloat}>
@@ -1043,6 +1080,25 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
               {transcript ?? `No transcript for ${locale.toUpperCase()}`}
             </Text>
           </ScrollView>
+        </View>
+      )}
+
+      {isLastSlide && (
+        <View style={[s.completeBanner, { paddingBottom: insets.bottom + 12 }]}>
+          <View style={s.completeBannerInner}>
+            <Text style={s.completeBannerTitle}>🎉 You've reached the end!</Text>
+            <Text style={s.completeBannerSub}>Mark this training as complete to track your progress.</Text>
+            <TouchableOpacity
+              style={[s.completeBtn, completing && s.completeBtnOff]}
+              onPress={handleComplete}
+              disabled={completing}
+              activeOpacity={0.85}
+            >
+              {completing
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={s.completeBtnTxt}>✓  Complete Training</Text>}
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
@@ -1137,6 +1193,7 @@ const s = StyleSheet.create({
   fsBg:   { backgroundColor: '#000' },
   fsImg:  { width: '100%', height: '100%' },
 
+  fsOverlayContainer: { ...StyleSheet.absoluteFillObject },
   fsTopBar: {
     position: 'absolute', top: 0, left: 0, right: 0,
     flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -1343,4 +1400,13 @@ const s = StyleSheet.create({
   quizMicTxt:        { fontSize: 13, color: '#9ca3af', flex: 1 },
   quizMicTxtActive:  { color: '#ef4444' },
   quizRecDot:        { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444' },
+
+  // ── Complete Training banner ──────────────────────────────────────────────────
+  completeBanner:      { backgroundColor: '#0d1420', borderTopWidth: 1, borderTopColor: '#1a2235', paddingTop: 16, paddingHorizontal: 16 },
+  completeBannerInner: { backgroundColor: '#14291a', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: '#166534', gap: 8 },
+  completeBannerTitle: { fontSize: 16, fontWeight: '800', color: '#f0fdf4', textAlign: 'center' },
+  completeBannerSub:   { fontSize: 13, color: '#86efac', textAlign: 'center', lineHeight: 18 },
+  completeBtn:         { marginTop: 4, backgroundColor: '#16a34a', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  completeBtnOff:      { backgroundColor: '#166534', opacity: 0.7 },
+  completeBtnTxt:      { fontSize: 15, fontWeight: '800', color: '#fff', letterSpacing: 0.3 },
 });

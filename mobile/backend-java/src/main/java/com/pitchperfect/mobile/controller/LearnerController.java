@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.*;
 
 import org.springframework.web.multipart.MultipartFile;
 
+import com.pitchperfect.mobile.model.LearnerProgress;
+
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -80,6 +82,26 @@ public class LearnerController {
                 "inputType",  quiz.getInputType() != null ? quiz.getInputType() : "text",
                 "maxScore",   quiz.getMaxScore()
         ));
+    }
+
+    @GetMapping("/all-progress")
+    public ResponseEntity<List<LearnerProgress>> getAllProgress(
+            @RequestHeader("X-User-Id") String userId) {
+        return ResponseEntity.ok(progressService.getAllProgress(userId));
+    }
+
+    @PostMapping("/progress/{trainingId}/complete")
+    public ResponseEntity<LearnerProgress> markComplete(
+            @PathVariable String trainingId,
+            @RequestHeader("X-User-Id") String userId) {
+        return ResponseEntity.ok(progressService.markComplete(userId, trainingId));
+    }
+
+    @PostMapping("/progress/{trainingId}/reset")
+    public ResponseEntity<LearnerProgress> resetProgress(
+            @PathVariable String trainingId,
+            @RequestHeader("X-User-Id") String userId) {
+        return ResponseEntity.ok(progressService.resetProgress(userId, trainingId));
     }
 
     @GetMapping("/faq-hints/{trainingId}")

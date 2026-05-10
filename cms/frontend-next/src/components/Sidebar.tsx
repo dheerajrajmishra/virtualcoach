@@ -3,13 +3,14 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { UploadCloud, Users, Activity, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
+import { UploadCloud, Users, Activity, Eye, ChevronLeft, ChevronRight, LayoutDashboard } from 'lucide-react'
 
 const NAV_ITEMS = [
-  { to: '/',            icon: UploadCloud, label: 'Upload Training'    },
-  { to: '/processing',  icon: Activity,    label: 'Processing Pipeline' },
-  { to: '/preview',     icon: Eye,         label: 'Preview'             },
-  { to: '/assignments', icon: Users,       label: 'Assignments'         },
+  { to: '/dashboard',   icon: LayoutDashboard, label: 'Dashboard'           },
+  { to: '/',            icon: UploadCloud,     label: 'Upload Training'     },
+  { to: '/processing',  icon: Activity,        label: 'Processing Pipeline' },
+  { to: '/preview',     icon: Eye,             label: 'Preview'             },
+  { to: '/assignments', icon: Users,           label: 'Assignments'         },
 ]
 
 export function Sidebar() {

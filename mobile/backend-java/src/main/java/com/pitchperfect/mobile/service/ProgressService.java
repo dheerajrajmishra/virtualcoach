@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -35,10 +36,41 @@ public class ProgressService {
         });
     }
 
+    public List<LearnerProgress> getAllProgress(String userId) {
+        return learnerProgressRepository.findByUserId(userId);
+    }
+
+    public LearnerProgress resetProgress(String userId, String trainingId) {
+        String progressId = userId + "_" + trainingId;
+        LearnerProgress progress = learnerProgressRepository.findById(progressId)
+                .orElseGet(() -> getOrCreate(userId, trainingId, ""));
+        progress.setCurrentSlideIndex(0);
+        progress.setCompletionPercent(0.0);
+        progress.setStatus("NOT_STARTED");
+        progress.setStartedAt(null);
+        progress.setCompletedAt(null);
+        progress.setLastAccessedAt(Instant.now());
+        return learnerProgressRepository.save(progress);
+    }
+
+    public LearnerProgress markComplete(String userId, String trainingId) {
+        String progressId = userId + "_" + trainingId;
+        LearnerProgress progress = learnerProgressRepository.findById(progressId)
+                .orElseGet(() -> getOrCreate(userId, trainingId, ""));
+        progress.setStatus("COMPLETED");
+        progress.setCompletionPercent(100.0);
+        progress.setLastAccessedAt(Instant.now());
+        if (progress.getCompletedAt() == null) {
+            progress.setCompletedAt(Instant.now());
+        }
+        return learnerProgressRepository.save(progress);
+    }
+
     public LearnerProgress updateSlide(String userId, String trainingId, int slideIndex, int totalSlides) {
         String progressId = userId + "_" + trainingId;
-        double percent = (double) slideIndex / totalSlides * 100;
-        String status = slideIndex >= totalSlides - 1 ? "COMPLETED" : "IN_PROGRESS";
+        String status = slideIndex >= totalSlides ? "COMPLETED" : "IN_PROGRESS";
+        double percent = "COMPLETED".equals(status) ? 100.0
+                       : totalSlides > 0 ? (double) slideIndex / totalSlides * 100 : 0;
 
         LearnerProgress progress = learnerProgressRepository.findById(progressId)
                 .orElseGet(() -> getOrCreate(userId, trainingId, ""));
@@ -49,10 +81,10 @@ public class ProgressService {
         progress.setStatus(status);
         progress.setLastAccessedAt(Instant.now());
 
-        if ("COMPLETED".equals(status)) {
+        if ("COMPLETED".equals(status) && progress.getCompletedAt() == null) {
             progress.setCompletedAt(Instant.now());
         }
-        if (slideIndex == 0) {
+        if (slideIndex == 1 && progress.getStartedAt() == null) {
             progress.setStartedAt(Instant.now());
         }
 
