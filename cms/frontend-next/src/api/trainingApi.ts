@@ -81,6 +81,30 @@ export interface EvalSummary {
   submissions: number
 }
 
+export interface LearnerProgress {
+  id: string
+  userId: string
+  trainingId: string
+  assignmentId: string
+  currentSlideIndex: number
+  totalSlides: number
+  completionPercent: number
+  status: string
+  lastAccessedAt: string
+}
+
+export function useLearnerProgress(trainingId?: string) {
+  return useQuery<LearnerProgress[]>({
+    queryKey: ['learner-progress', trainingId],
+    queryFn: async () => {
+      const { data } = await mobileApi.get('/admin/progress', {
+        params: trainingId ? { trainingId } : undefined,
+      })
+      return data
+    },
+  })
+}
+
 export function useTrainings() {
   return useQuery<Training[]>({
     queryKey: ['trainings'],
@@ -217,7 +241,7 @@ export function usePublishTraining() {
 }
 
 export function useAssignments(filters?: { product?: string; userId?: string }) {
-  return useQuery({
+  return useQuery<Assignment[]>({
     queryKey: ['assignments', filters],
     queryFn: async () => {
       const { data } = await api.get('/assignments', { params: filters })

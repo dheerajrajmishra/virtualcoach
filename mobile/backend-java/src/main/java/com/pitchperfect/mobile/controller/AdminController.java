@@ -4,6 +4,7 @@ import com.pitchperfect.mobile.model.EvaluationResult;
 import com.pitchperfect.mobile.model.UnansweredQuestion;
 import com.pitchperfect.mobile.repository.EvaluationResultRepository;
 import com.pitchperfect.mobile.repository.UnansweredQuestionRepository;
+import com.pitchperfect.mobile.repository.LearnerProgressRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +22,7 @@ public class AdminController {
 
     private final UnansweredQuestionRepository unansweredQuestionRepository;
     private final EvaluationResultRepository evaluationResultRepository;
+    private final LearnerProgressRepository learnerProgressRepository;
 
     private static final Sort NEWEST_FIRST     = Sort.by(Sort.Direction.DESC, "askedAt");
     private static final Sort EVAL_NEWEST_FIRST = Sort.by(Sort.Direction.DESC, "evaluatedAt");
@@ -60,7 +62,6 @@ public class AdminController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    /** All evaluation results, newest first. Optionally filter by trainingId. */
     @GetMapping("/evaluations")
     public ResponseEntity<List<EvaluationResult>> listEvaluations(
             @RequestParam(required = false) String trainingId) {
@@ -68,6 +69,21 @@ public class AdminController {
         List<EvaluationResult> results = trainingId != null
                 ? evaluationResultRepository.findByTrainingId(trainingId, EVAL_NEWEST_FIRST)
                 : evaluationResultRepository.findAllByOrderByEvaluatedAtDesc();
+        return ResponseEntity.ok(results);
+    }
+
+    /** All learner progress records. Optionally filter by trainingId. */
+    @GetMapping("/progress")
+    public ResponseEntity<List<com.pitchperfect.mobile.model.LearnerProgress>> listProgress(
+            @RequestParam(required = false) String trainingId) {
+        
+        // Note: ProgressService doesn't have a findByTrainingId yet, 
+        // we can use the repository directly here for admin purposes.
+        List<com.pitchperfect.mobile.model.LearnerProgress> results = trainingId != null
+                ? learnerProgressRepository.findAll().stream()
+                    .filter(p -> p.getTrainingId().equals(trainingId))
+                    .collect(Collectors.toList())
+                : learnerProgressRepository.findAll();
         return ResponseEntity.ok(results);
     }
 

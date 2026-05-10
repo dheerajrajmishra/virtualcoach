@@ -40,13 +40,20 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="p-8 max-w-3xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Upload Training Module</h1>
-        <p className="text-gray-500 mt-1">
-          Fill in the metadata, upload your deck and the combined Excel template
-          (sheets: Transcripts, FAQs, Quizzes). Missing content will be auto-translated.
-        </p>
+    <div className="p-8 max-w-6xl mx-auto min-h-full flex flex-col">
+      {/* Header Section */}
+      <div className="mb-8 flex items-end justify-between">
+        <div>
+          <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Create Training</h1>
+          <p className="text-gray-500 mt-2 max-w-2xl text-sm leading-relaxed">
+            Configure metadata and upload your source materials. The ingestion pipeline will automatically 
+            process your presentation deck and synthesize multilingual audio from the provided Excel data.
+          </p>
+        </div>
+        <div className="hidden md:flex items-center gap-2 text-sm text-gray-500 bg-white/60 px-4 py-2 rounded-xl border border-gray-200/60 shadow-sm backdrop-blur-sm">
+          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+          Pipeline Ready
+        </div>
       </div>
 
       <ProgressModal 
@@ -55,44 +62,90 @@ export default function UploadPage() {
         onClose={handleCloseModal} 
       />
 
-      <form onSubmit={handleSubmit} className="space-y-8">
-        <div className="card">
-          <MetadataForm />
-        </div>
+      <form onSubmit={handleSubmit} className="flex-1 pb-12">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          
+          {/* Left Column: Metadata */}
+          <div className="lg:col-span-5 space-y-6">
+            <div className="glass-card sticky top-8">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
+                  1
+                </div>
+                <h2 className="text-lg font-bold text-gray-800">Training Details</h2>
+              </div>
+              <MetadataForm />
+            </div>
+          </div>
 
-        <div className="card space-y-6">
-          <h2 className="text-lg font-semibold text-gray-800">File Uploads</h2>
+          {/* Right Column: Files & Submit */}
+          <div className="lg:col-span-7 space-y-6">
+            <div className="glass-card">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
+                  2
+                </div>
+                <h2 className="text-lg font-bold text-gray-800">Source Materials</h2>
+              </div>
 
-          <FileUploader
-            field="deck"
-            label="Presentation Deck (PPT / PDF) *"
-            accept={{
-              'application/vnd.ms-powerpoint': ['.ppt'],
-              'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
-              'application/pdf': ['.pdf'],
-            }}
-            hint="Max 100 MB — slides will be split into images automatically"
-          />
+              <div className="space-y-8">
+                <FileUploader
+                  field="deck"
+                  label="Presentation Deck (PPT / PDF) *"
+                  accept={{
+                    'application/vnd.ms-powerpoint': ['.ppt'],
+                    'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
+                    'application/pdf': ['.pdf'],
+                  }}
+                  hint="Max 100 MB — slides will be automatically extracted and optimized"
+                />
 
-          <FileUploader
-            field="dataExcel"
-            label="Training Data Excel *"
-            accept={{
-              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-            }}
-            hint="Single workbook with three sheets: 'Transcripts', 'FAQs', 'Quizzes' — blank locale columns will be auto-translated"
-          />
-        </div>
+                <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent my-2" />
 
-        <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={!isValid || createTraining.isPending}
-            className="btn-primary flex items-center gap-2"
-          >
-            {createTraining.isPending && <Loader2 size={16} className="animate-spin" />}
-            {createTraining.isPending ? 'Uploading...' : 'Submit Training'}
-          </button>
+                <FileUploader
+                  field="dataExcel"
+                  label="Training Data (Excel) *"
+                  accept={{
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+                  }}
+                  hint="Must include 'Transcripts', 'FAQs', and 'Quizzes' sheets. Missing locales will be auto-translated."
+                />
+              </div>
+            </div>
+
+            {/* Action Bar */}
+            <div className="glass-card flex items-center justify-between p-5 mt-8">
+              <div className="text-sm text-gray-500">
+                {!isValid ? (
+                  <span className="flex items-center gap-2 text-amber-600 font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    Complete all required fields to submit
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2 text-green-600 font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                    Ready for ingestion
+                  </span>
+                )}
+              </div>
+              
+              <button
+                type="submit"
+                disabled={!isValid || createTraining.isPending}
+                className="btn-primary flex items-center gap-2 px-8 py-3 text-base shadow-lg shadow-primary-500/30"
+              >
+                {createTraining.isPending ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Initializing Pipeline...
+                  </>
+                ) : (
+                  'Start Ingestion Pipeline →'
+                )}
+              </button>
+            </div>
+          </div>
+          
         </div>
       </form>
     </div>
