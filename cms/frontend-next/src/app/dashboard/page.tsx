@@ -79,10 +79,93 @@ function StatCard({
 
 // ── Overview tab ──────────────────────────────────────────────────────────────
 
-function OverviewTab({
-  trainings, assignments, unanswered,
+// ── Actionable Insights ───────────────────────────────────────────────────────
+
+function ActionableInsights({
+  trainings, assignments, unanswered, evaluations
 }: {
-  trainings: Training[]; assignments: Assignment[]; unanswered: UnansweredQuestion[]
+  trainings: Training[]; assignments: Assignment[]; unanswered: UnansweredQuestion[]; evaluations: EvaluationResult[]
+}) {
+  const insights = []
+
+  // 1. Pipeline Errors
+  const failed = trainings.filter(t => t.status === 'ERROR')
+  if (failed.length > 0) {
+    insights.push({
+      type: 'critical',
+      icon: AlertCircle,
+      title: `${failed.length} Training Modules Failed`,
+      desc: 'Some modules encountered processing errors and need a re-run with valid data.',
+      color: 'bg-red-50 text-red-700 border-red-100',
+      iconColor: 'bg-red-100 text-red-600'
+    })
+  }
+
+  // 2. High FAQ Gaps
+  const unreviewed = unanswered.filter(q => !q.reviewed)
+  if (unreviewed.length > 5) {
+    insights.push({
+      type: 'warning',
+      icon: MessageSquareX,
+      title: `${unreviewed.length} Learner Queries Unaddressed`,
+      desc: 'Multiple learners are asking questions that the AI Coach cannot answer yet. Review the FAQ gaps.',
+      color: 'bg-amber-50 text-amber-700 border-amber-100',
+      iconColor: 'bg-amber-100 text-amber-600'
+    })
+  }
+
+  // 3. Struggling Learners
+  const lowScores = evaluations.filter(e => e.scorePercent < 60)
+  if (lowScores.length > 0) {
+    insights.push({
+      type: 'attention',
+      icon: TrendingUp,
+      title: `${lowScores.length} Learners Below Proficiency`,
+      desc: 'Users are scoring below 60% in recent quizzes. Consider reviewing training difficulty or providing additional support.',
+      color: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+      iconColor: 'bg-indigo-100 text-indigo-600'
+    })
+  }
+
+  // 4. Stalled Assignments
+  const overdue = assignments.filter(a => a.status === 'OVERDUE')
+  if (overdue.length > 0) {
+    insights.push({
+      type: 'warning',
+      icon: Clock,
+      title: `${overdue.length} Overdue Assignments`,
+      desc: 'Leaners have missed their deadlines. Follow up with department heads to drive completion.',
+      color: 'bg-orange-50 text-orange-700 border-orange-100',
+      iconColor: 'bg-orange-100 text-orange-600'
+    })
+  }
+
+  if (insights.length === 0) return null
+
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Actionable Insights</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {insights.map((ins, i) => (
+          <div key={i} className={`p-4 rounded-2xl border flex gap-4 animate-in fade-in slide-in-from-right-4 duration-500 ${ins.color}`}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${ins.iconColor}`}>
+              <ins.icon size={20} />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm">{ins.title}</h3>
+              <p className="text-xs mt-1 opacity-80 leading-relaxed">{ins.desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function OverviewTab({
+  trainings, assignments, unanswered, evaluations
+}: {
+  trainings: Training[]; assignments: Assignment[]; unanswered: UnansweredQuestion[]; evaluations: EvaluationResult[]
 }) {
   const published   = trainings.filter(t => t.publishedAt)
   const ready       = trainings.filter(t => t.status === 'READY')
@@ -120,6 +203,13 @@ function OverviewTab({
           <StatCard label="Overdue"          value={overdue.length}      icon={CalendarClock} color="bg-orange-500" />
         </div>
       </section>
+
+      <ActionableInsights 
+        trainings={trainings} 
+        assignments={assignments} 
+        unanswered={unanswered} 
+        evaluations={evaluations} 
+      />
 
       {/* FAQ KPI */}
       <section>
@@ -736,7 +826,7 @@ export default function DashboardPage() {
       ) : (
         <>
           {activeTab === 'Overview' && (
-            <OverviewTab trainings={trainings} assignments={assignments} unanswered={unanswered} />
+            <OverviewTab trainings={trainings} assignments={assignments} unanswered={unanswered} evaluations={evaluations} />
           )}
           {activeTab === 'Trainings' && (
             <TrainingsTab trainings={trainings} />
