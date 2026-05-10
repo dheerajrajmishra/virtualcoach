@@ -47,6 +47,7 @@ public class IngestionService {
     private final SlideRepository slideRepository;
     private final FaqRepository faqRepository;
     private final QuizRepository quizRepository;
+    private final FaqCacheService faqCacheService;
     private final TranslationService translationService;
     private final AudioFactoryService audioFactoryService;
     private final StatusService statusService;
@@ -109,7 +110,6 @@ public class IngestionService {
         return training;
     }
 
-    @Async
     public void processUpload(String trainingId, FileData deck, FileData dataExcel) {
         try {
             statusService.setStep(trainingId, "PROCESSING", "UPLOADING_DECK");
@@ -129,12 +129,12 @@ public class IngestionService {
         }
     }
 
-    @Async
     public void reprocessTraining(String trainingId, FileData dataExcel) {
         try {
             statusService.setStep(trainingId, "PROCESSING", "CLEARING_DATA");
             slideRepository.deleteByTrainingId(trainingId);
             faqRepository.deleteByTrainingId(trainingId);
+            faqCacheService.evict(trainingId);
             quizRepository.deleteByTrainingId(trainingId);
             runContent(trainingId, dataExcel, new LinkedHashMap<>());
         } catch (Exception e) {
@@ -283,7 +283,7 @@ public class IngestionService {
                 answers.put("hi", extractString(row, 5));
 
                 faqs.add(FAQ.builder()
-                        .id(extractString(row, 0))
+                        .id(UUID.randomUUID().toString())
                         .trainingId(trainingId)
                         .slideIndex(extractInt(row, 1))
                         .questions(questions)
@@ -319,7 +319,7 @@ public class IngestionService {
                 rubrics.put("en", extractString(row, 5));
 
                 quizzes.add(Quiz.builder()
-                        .id(extractString(row, 0))
+                        .id(UUID.randomUUID().toString())
                         .trainingId(trainingId)
                         .slideIndex(extractInt(row, 1))
                         .questions(questions)

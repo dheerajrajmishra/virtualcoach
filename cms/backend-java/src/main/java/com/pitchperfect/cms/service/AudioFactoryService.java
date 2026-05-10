@@ -78,7 +78,8 @@ public class AudioFactoryService {
     }
 
     /**
-     * Generates audio for all slides in parallel (3 concurrent threads — one per slide).
+     * Generates audio for all slides in parallel (3 concurrent threads — one per
+     * slide).
      * Each thread handles all locales for its slide sequentially, so there are no
      * concurrent writes to the same slide's audioUrls map.
      * The 3-thread cap replaces the old 350 ms sleep for ElevenLabs rate-limiting.
@@ -106,13 +107,15 @@ public class AudioFactoryService {
 
     /**
      * Generates audio for every locale of one slide sequentially.
-     * Called from a single audioExecutor thread — no concurrency within this method.
+     * Called from a single audioExecutor thread — no concurrency within this
+     * method.
      */
     private void generateSlideAudio(String trainingId, Slide slide) {
         for (Map.Entry<String, String> entry : slide.getTranscripts().entrySet()) {
             String locale = entry.getKey();
             String text = entry.getValue();
-            if (text == null || text.isBlank()) continue;
+            if (text == null || text.isBlank())
+                continue;
             try {
                 String audioUrl = synthesizeAndSave(trainingId, slide, locale, text);
                 slide.getAudioUrls().put(locale, audioUrl);
@@ -158,16 +161,18 @@ public class AudioFactoryService {
 
     /**
      * Synthesizes text with fully explicit settings — bypasses config entirely.
-     * Used by the test endpoint so any voice/key/URL/stability/style can be tried on the fly.
+     * Used by the test endpoint so any voice/key/URL/stability/style can be tried
+     * on the fly.
      *
      * @param apiKey  ElevenLabs API key — falls back to configured key if null
      * @param baseUrl ElevenLabs base URL — falls back to configured URL if null
      */
     public byte[] synthesize(String text, String voiceId,
-                             double stability, double similarityBoost, double style,
-                             String apiKey, String baseUrl) throws Exception {
-        String effectiveKey     = (apiKey  != null && !apiKey.isBlank())  ? apiKey  : elProps.getApiKey();
-        String effectiveBaseUrl = (baseUrl != null && !baseUrl.isBlank()) ? baseUrl.replaceAll("/$", "") : ELEVENLABS_BASE;
+            double stability, double similarityBoost, double style,
+            String apiKey, String baseUrl) throws Exception {
+        String effectiveKey = (apiKey != null && !apiKey.isBlank()) ? apiKey : elProps.getApiKey();
+        String effectiveBaseUrl = (baseUrl != null && !baseUrl.isBlank()) ? baseUrl.replaceAll("/$", "")
+                : ELEVENLABS_BASE;
 
         log.info("TTS (explicit) baseUrl={} voice={} stability={} similarityBoost={} style={}",
                 effectiveBaseUrl, voiceId, stability, similarityBoost, style);
@@ -201,10 +206,10 @@ public class AudioFactoryService {
     }
 
     private byte[] callElevenLabs(String text, String locale) throws Exception {
-        String voiceId   = elProps.voiceFor(locale);
-        double stab      = elProps.stabilityFor(locale);
-        double simBoost  = elProps.getSimilarityBoost();
-        double style     = elProps.styleFor(locale);
+        String voiceId = elProps.voiceFor(locale);
+        double stab = elProps.stabilityFor(locale);
+        double simBoost = elProps.getSimilarityBoost();
+        double style = elProps.styleFor(locale);
 
         log.debug("TTS locale={} voice={} stability={} style={}", locale, voiceId, stab, style);
 

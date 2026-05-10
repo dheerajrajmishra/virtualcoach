@@ -2,16 +2,18 @@ package com.pitchperfect.mobile.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.pitchperfect.mobile.model.FAQ;
-import com.pitchperfect.mobile.repository.FaqRepository;
+import com.pitchperfect.mobile.model.UnansweredQuestion;
+import com.pitchperfect.mobile.repository.UnansweredQuestionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -21,7 +23,10 @@ public class RagService {
 
     private static final MediaType JSON = MediaType.get("application/json");
 
-    private final FaqRepository faqRepository;
+    private static final String NO_INFO_SIGNAL = "I don't have information on that in this module";
+
+    private final FaqCacheService faqCacheService;
+    private final UnansweredQuestionRepository unansweredQuestionRepository;
     private final OkHttpClient httpClient = new OkHttpClient.Builder()
             .callTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
@@ -43,28 +48,54 @@ public class RagService {
     @Value("${app.rag.max-context-faqs}")
     private int maxContextFaqs;
 
-    public String answer(String trainingId, int slideIndex, String question, String locale) {
+    public String answer(String trainingId, int slideIndex, String question, String locale, String userId) {
         log.info("RAG Service called: trainingId={}, slideIndex={}, locale='{}', question='{}'",
                 trainingId, slideIndex, locale, question);
         try {
             List<String> contextFaqs = fetchRelevantFaqs(trainingId, slideIndex, locale);
             log.info("Found {} relevant FAQs for context.", contextFaqs.size());
-            
+
             String prompt = buildRagPrompt(question, contextFaqs, locale);
             String response = callAzureOpenAI(prompt);
-            
+
+            if (response.contains(NO_INFO_SIGNAL)) {
+                logUnanswered(trainingId, userId, slideIndex, locale, question, response);
+            }
+
             log.info("RAG Service successfully generated answer ({} chars)", response.length());
             return response;
         } catch (Exception e) {
             log.error("RAG query failed for question '{}': {}", question, e.getMessage());
-            return "I'm sorry, I couldn't find an answer to that question right now.";
+            String fallback = "I'm sorry, I couldn't find an answer to that question right now.";
+            logUnanswered(trainingId, userId, slideIndex, locale, question, fallback);
+            return fallback;
+        }
+    }
+
+    private void logUnanswered(String trainingId, String userId, int slideIndex,
+                               String locale, String question, String aiResponse) {
+        try {
+            unansweredQuestionRepository.save(UnansweredQuestion.builder()
+                    .id(UUID.randomUUID().toString())
+                    .trainingId(trainingId)
+                    .userId(userId)
+                    .slideIndex(slideIndex)
+                    .locale(locale)
+                    .question(question)
+                    .aiResponse(aiResponse)
+                    .askedAt(Instant.now())
+                    .reviewed(false)
+                    .build());
+            log.info("Logged unanswered question for training={} slide={}: '{}'", trainingId, slideIndex, question);
+        } catch (Exception ex) {
+            log.warn("Failed to log unanswered question: {}", ex.getMessage());
         }
     }
 
     private List<String> fetchRelevantFaqs(String trainingId, int slideIndex, String locale) {
         // We now fetch ALL FAQs for the training to give the LLM full context, 
         // but we still prioritize the current slide's context if it exists.
-        return faqRepository.findByTrainingId(trainingId)
+        return faqCacheService.findByTrainingId(trainingId)
                 .stream()
                 .limit(20) // Limit to 20 to avoid exceeding token limits while still being comprehensive
                 .map(faq -> {

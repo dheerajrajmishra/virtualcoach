@@ -14,7 +14,10 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "slides")
+@Table(name = "slides", indexes = {
+        @Index(name = "idx_slides_training_id",             columnList = "training_id"),
+        @Index(name = "idx_slides_training_slide_index",    columnList = "training_id, slide_index")
+})
 public class Slide {
 
     @Id

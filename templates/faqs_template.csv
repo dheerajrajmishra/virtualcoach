@@ -1,7 +1,0 @@
-faq_id,slide_index,question_en,answer_en,question_hi,answer_hi,tags,language_scope
-faq_001,1,What is Product A?,"Product A is an enterprise SaaS platform designed for mid-market teams.",,,"product,intro",all
-faq_002,1,Who should use Product A?,"Sales teams, operations managers, and CXOs looking for a unified platform.",,,"audience,intro",all
-faq_003,2,What are the three core features?,"Speed (sub-second response), Reliability (99.9% SLA), Scalability (up to 1M users).",,,"features",all
-faq_004,3,Is there a free trial?,"Yes, a 14-day free trial is available with no credit card required.",,,"pricing,trial",all
-faq_005,3,Can we negotiate pricing?,"Volume discounts are available for teams above 50 seats. Contact your account manager.",,,"pricing,negotiation",all
-faq_006,4,How does Product A compare to Competitor X?,"Product A is 40% faster and costs 20% less at equivalent tier.",,,"competition",all

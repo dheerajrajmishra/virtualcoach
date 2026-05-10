@@ -11,7 +11,11 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Generates dense vector embeddings via Azure OpenAI (text-embedding-3-small by default).
@@ -53,21 +57,29 @@ public class EmbeddingService {
     public List<FAQ> generateEmbeddings(List<FAQ> faqs) {
         if (faqs.isEmpty()) return faqs;
         log.info("Generating embeddings for {} FAQs using deployment '{}'", faqs.size(), embeddingDeployment);
-        int ok = 0;
-        for (FAQ faq : faqs) {
-            String question = faq.getQuestions() != null ? faq.getQuestions().get("en") : null;
-            if (question == null || question.isBlank()) continue;
-            try {
-                List<Double> vec = embed(question);
-                if (vec != null) {
-                    faq.setEmbedding(vec);
-                    ok++;
-                }
-            } catch (Exception e) {
-                log.warn("Embedding failed for FAQ {}: {}", faq.getId(), e.getMessage());
-            }
+        ExecutorService pool = Executors.newFixedThreadPool(Math.min(5, faqs.size()));
+        AtomicInteger ok = new AtomicInteger(0);
+        try {
+            List<CompletableFuture<Void>> futures = faqs.stream()
+                    .map(faq -> CompletableFuture.runAsync(() -> {
+                        String question = faq.getQuestions() != null ? faq.getQuestions().get("en") : null;
+                        if (question == null || question.isBlank()) return;
+                        try {
+                            List<Double> vec = embed(question);
+                            if (vec != null) {
+                                faq.setEmbedding(vec);
+                                ok.incrementAndGet();
+                            }
+                        } catch (Exception e) {
+                            log.warn("Embedding failed for FAQ {}: {}", faq.getId(), e.getMessage());
+                        }
+                    }, pool))
+                    .toList();
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        } finally {
+            pool.shutdown();
         }
-        log.info("Embedded {}/{} FAQs successfully", ok, faqs.size());
+        log.info("Embedded {}/{} FAQs successfully", ok.get(), faqs.size());
         return faqs;
     }
 

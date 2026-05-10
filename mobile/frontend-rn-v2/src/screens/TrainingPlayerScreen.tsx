@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio, AVPlaybackStatus } from 'expo-av';
-import { fetchSlides, resolveMediaUrl, askFaq, transcribeAudio, fetchQuiz, submitQuizText, QuizQuestion, EvalResult, Slide, Training } from '../api';
+import { fetchSlides, resolveMediaUrl, askFaq, transcribeAudio, fetchQuiz, submitQuizText, fetchFaqHints, QuizQuestion, EvalResult, Slide, Training } from '../api';
 
 if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
 
@@ -96,6 +96,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
 
   const [showChat, setShowChat]         = useState(false);
   const [chatInput, setChatInput]       = useState('');
+  const [faqHints, setFaqHints]         = useState<string[]>([]);
   const [chatLoading, setChatLoading]   = useState(false);
   const [chatMode, setChatMode]         = useState<'text' | 'voice' | 'video'>('text');
   const [isRecording, setIsRecording]   = useState(false);
@@ -479,6 +480,7 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
     soundRef.current?.pauseAsync().catch(() => {});
     setIsPlaying(false);
     setShowChat(true);
+    fetchFaqHints(training.id, locale).then(setFaqHints).catch(() => {});
   }
 
   // ── AI Coach FAQ Button (Consistent across all stages) ─────────────────────
@@ -811,15 +813,24 @@ export default function TrainingPlayerScreen({ training, onBack }: Props) {
             )}
           </ScrollView>
 
-          {/* Quick Context / Chips */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}
-            style={s.faqChipsScroll} contentContainerStyle={s.faqChipsContent}>
-            {['Summarise slide', 'Key takeaways', 'Explain simply', 'Next steps'].map(q => (
-              <TouchableOpacity key={q} style={s.faqChip} onPress={() => sendChatMessage(q)}>
-                <Text style={s.faqChipTxt}>{q}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          {/* FAQ Suggestions — filtered as user types */}
+          {(() => {
+            const term = chatInput.toLowerCase().trim();
+            const visible = term.length === 0
+              ? faqHints.slice(0, 5)
+              : faqHints.filter(h => h.toLowerCase().includes(term)).slice(0, 5);
+            if (visible.length === 0) return null;
+            return (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                style={s.hintChipsScroll} contentContainerStyle={s.faqChipsContent}>
+                {visible.map((hint, i) => (
+                  <TouchableOpacity key={i} style={s.hintChip} onPress={() => setChatInput(hint)}>
+                    <Text style={s.hintChipTxt} numberOfLines={1}>{hint}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            );
+          })()}
 
           {/* Input Area */}
           <View style={[s.chatInputRow, { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 12) : 12 }]}>
@@ -1276,10 +1287,10 @@ const s = StyleSheet.create({
   chatCloseTxt:      { color: '#9ca3af', fontSize: 14, fontWeight: '700' },
 
   // Quick FAQ chips
-  faqChipsScroll:    { maxHeight: 44, flexGrow: 0 },
   faqChipsContent:   { paddingHorizontal: 16, paddingVertical: 8, gap: 8, flexDirection: 'row', alignItems: 'center' },
-  faqChip:           { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: 'transparent', borderWidth: 1, borderColor: '#374151' },
-  faqChipTxt:        { fontSize: 12, fontWeight: '500', color: '#9ca3af' },
+  hintChipsScroll:   { maxHeight: 44, flexGrow: 0, borderTopWidth: 1, borderTopColor: '#1f2937' },
+  hintChip:          { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: '#1e1b4b', borderWidth: 1, borderColor: '#4338ca', maxWidth: 220 },
+  hintChipTxt:       { fontSize: 12, fontWeight: '500', color: '#a5b4fc' },
 
   // Messages
   chatMessages:        { flex: 1 },

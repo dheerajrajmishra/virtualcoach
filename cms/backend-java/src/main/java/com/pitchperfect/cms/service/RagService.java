@@ -3,7 +3,6 @@ package com.pitchperfect.cms.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pitchperfect.cms.model.FAQ;
-import com.pitchperfect.cms.repository.FaqRepository;
 import com.pitchperfect.cms.repository.SlideRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,7 +13,6 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 /**
  * RAG (Retrieval-Augmented Generation) pipeline for the learner FAQ feature.
@@ -32,8 +30,8 @@ public class RagService {
 
     private static final MediaType JSON_MEDIA   = MediaType.get("application/json");
 
-    private final FaqRepository    faqRepository;
-    private final SlideRepository  slideRepository;
+    private final FaqCacheService   faqCacheService;
+    private final SlideRepository   slideRepository;
 
     private final OkHttpClient httpClient = new OkHttpClient.Builder()
             .callTimeout(90, TimeUnit.SECONDS)
@@ -72,7 +70,7 @@ public class RagService {
         log.info("RAG ask (LLM only) | training={} locale={} slide={} q='{}'", trainingId, locale, slideIndex, preview);
 
         // 1. Fetch all FAQs for this training (we will pass these as context to the LLM)
-        List<FAQ> allFaqs = faqRepository.findByTrainingId(trainingId);
+        List<FAQ> allFaqs = faqCacheService.findByTrainingId(trainingId);
 
         // 2. Current slide context (title + English transcript)
         String slideCtx = buildSlideContext(trainingId, slideIndex);
@@ -164,9 +162,7 @@ public class RagService {
 
     private String buildSlideContext(String trainingId, Integer slideIndex) {
         if (slideIndex == null) return "";
-        return slideRepository.findByTrainingIdOrderBySlideIndex(trainingId).stream()
-                .filter(s -> s.getSlideIndex() == slideIndex)
-                .findFirst()
+        return slideRepository.findByTrainingIdAndSlideIndex(trainingId, slideIndex)
                 .map(s -> {
                     String transcript = s.getTranscripts() != null
                             ? s.getTranscripts().getOrDefault("en", "") : "";

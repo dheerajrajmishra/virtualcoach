@@ -120,6 +120,16 @@ export async function submitQuizText(
   return res.json();
 }
 
+export async function fetchFaqHints(trainingId: string, locale: string): Promise<string[]> {
+  try {
+    const res = await fetch(`${MOBILE_BASE}/learner/faq-hints/${trainingId}?locale=${locale}`, { headers: HEADERS });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
 export async function transcribeAudio(uri: string, locale: string): Promise<string> {
   const formData = new FormData();
   formData.append('audio', {

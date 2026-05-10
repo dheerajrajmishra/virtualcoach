@@ -5,6 +5,7 @@ import com.pitchperfect.cms.model.Training;
 import com.pitchperfect.cms.repository.TrainingRepository;
 import com.pitchperfect.cms.service.AudioFactoryService;
 import com.pitchperfect.cms.service.IngestionService;
+import com.pitchperfect.cms.service.JobQueueService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
@@ -23,6 +24,7 @@ import java.util.Map;
 public class TrainingController {
 
     private final IngestionService ingestionService;
+    private final JobQueueService jobQueueService;
     private final AudioFactoryService audioFactoryService;
     private final TrainingRepository trainingRepository;
     private final com.pitchperfect.cms.repository.SlideRepository slideRepository;
@@ -42,7 +44,7 @@ public class TrainingController {
                 : null;
 
         Training training = ingestionService.createTraining(name, category, product, userId, selectedLocales);
-        ingestionService.processUpload(training.getId(),
+        jobQueueService.enqueue(training.getId(), "PROCESS",
                 IngestionService.FileData.from(deck),
                 IngestionService.FileData.from(data));
         return ResponseEntity.accepted().body(training);
@@ -57,11 +59,17 @@ public class TrainingController {
                 ? trainingRepository.findByStatusAndPublishedAtIsNotNull("READY", sort)
                 : trainingRepository.findAll(sort);
 
-        trainings.forEach(t -> {
-            if (t.getTotalSlides() == 0) {
-                t.setTotalSlides((int) slideRepository.countByTrainingId(t.getId()));
-            }
-        });
+        List<String> ids = trainings.stream().map(Training::getId).toList();
+        if (!ids.isEmpty()) {
+            Map<String, Long> counts = new java.util.HashMap<>();
+            slideRepository.countsByTrainingIds(ids)
+                    .forEach(row -> counts.put((String) row[0], (Long) row[1]));
+            trainings.forEach(t -> {
+                if (t.getTotalSlides() == 0) {
+                    t.setTotalSlides(counts.getOrDefault(t.getId(), 0L).intValue());
+                }
+            });
+        }
         return ResponseEntity.ok(trainings);
     }
 
@@ -102,7 +110,7 @@ public class TrainingController {
         return trainingRepository.findById(id)
                 .map(training -> {
                     try {
-                        ingestionService.reprocessTraining(id, IngestionService.FileData.from(data));
+                        jobQueueService.enqueue(id, "REPROCESS", null, IngestionService.FileData.from(data));
                         return ResponseEntity.accepted().body(training);
                     } catch (java.io.IOException e) {
                         throw new RuntimeException(e);

@@ -17,7 +17,9 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "faqs")
+@Table(name = "faqs", indexes = {
+        @Index(name = "idx_faqs_training_id", columnList = "training_id")
+})
 public class FAQ {
 
     @Id

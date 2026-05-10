@@ -2,6 +2,7 @@ package com.pitchperfect.mobile.controller;
 
 import com.pitchperfect.mobile.model.LearnerProgress;
 import com.pitchperfect.mobile.model.Quiz;
+import com.pitchperfect.mobile.service.FaqCacheService;
 import com.pitchperfect.mobile.repository.QuizRepository;
 import com.pitchperfect.mobile.service.ProgressService;
 import com.pitchperfect.mobile.service.RagService;
@@ -13,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/learner")
@@ -22,6 +24,7 @@ public class LearnerController {
 
     private final ProgressService progressService;
     private final RagService ragService;
+    private final FaqCacheService faqCacheService;
     private final QuizRepository quizRepository;
     private final com.pitchperfect.mobile.service.ElevenLabsSpeechService elevenLabsSpeechService;
 
@@ -52,7 +55,7 @@ public class LearnerController {
         String question = (String) body.get("question");
         String locale = (String) body.getOrDefault("locale", "en");
 
-        String answer = ragService.answer(trainingId, slideIndex, question, locale);
+        String answer = ragService.answer(trainingId, slideIndex, question, locale, userId);
         return ResponseEntity.ok(Map.of("answer", answer));
     }
 
@@ -77,6 +80,21 @@ public class LearnerController {
                 "inputType",  quiz.getInputType() != null ? quiz.getInputType() : "text",
                 "maxScore",   quiz.getMaxScore()
         ));
+    }
+
+    @GetMapping("/faq-hints/{trainingId}")
+    public ResponseEntity<List<String>> faqHints(
+            @PathVariable String trainingId,
+            @RequestParam(defaultValue = "en") String locale) {
+
+        List<String> questions = faqCacheService.findByTrainingId(trainingId).stream()
+                .map(faq -> faq.getQuestions() != null
+                        ? faq.getQuestions().getOrDefault(locale, faq.getQuestions().getOrDefault("en", ""))
+                        : "")
+                .filter(q -> !q.isBlank())
+                .distinct()
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(questions);
     }
 
     @PostMapping("/transcribe")
