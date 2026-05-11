@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { to: '/trainings',   icon: BookOpen,        label: 'Trainings'           },
   { to: '/',            icon: UploadCloud,     label: 'Upload Training'     },
   { to: '/processing',  icon: Activity,        label: 'Processing Pipeline' },
+  { to: '/preview',     icon: Eye,             label: 'Preview'             },
   { to: '/assignments', icon: Users,           label: 'Assignments'         },
 ]
 

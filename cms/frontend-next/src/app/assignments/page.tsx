@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import {
   Plus, Loader2, Search, Users, CheckCircle2, AlertCircle,
   Clock, PlayCircle, X, Calendar, ChevronDown, BookOpen,
-  AlertTriangle, SlidersHorizontal,
+  AlertTriangle, SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react'
 import {
   useAssignments, useCreateAssignment, useTrainings,
@@ -286,11 +286,20 @@ function AssignmentRow({ assignment, trainingMap }: { assignment: Assignment; tr
 
 const STATUS_FILTERS = ['All', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE'] as const
 
+type SortField = 'userId' | 'training' | 'product' | 'status' | 'deadline' | 'assignedBy'
+type SortOrder = 'asc' | 'desc' | null
+
+interface SortConfig {
+  field: SortField
+  order: SortOrder
+}
+
 export default function AssignmentPage() {
   const [showForm, setShowForm]     = useState(false)
   const [search, setSearch]         = useState('')
   const [statusFilter, setStatus]   = useState<string>('All')
   const [productFilter, setProduct] = useState('')
+  const [sort, setSort]             = useState<SortConfig>({ field: 'deadline', order: 'desc' })
 
   const { data: assignments = [], isLoading: aLoad } = useAssignments()
   const { data: trainings   = [], isLoading: tLoad } = useTrainings()
@@ -307,7 +316,9 @@ export default function AssignmentPage() {
 
   const visible = useMemo(() => {
     const q = search.toLowerCase().trim()
-    return assignments.filter((a: Assignment) => {
+    
+    // 1. Filter
+    const filtered = assignments.filter((a: Assignment) => {
       const training = trainingMap[a.trainingId]
       if (statusFilter !== 'All' && a.status !== statusFilter) return false
       if (productFilter && a.product !== productFilter) return false
@@ -316,7 +327,32 @@ export default function AssignmentPage() {
                !a.product.toLowerCase().includes(q)) return false
       return true
     })
-  }, [assignments, statusFilter, productFilter, search, trainingMap])
+
+    // 2. Sort
+    if (!sort.order) return filtered
+
+    return [...filtered].sort((a, b) => {
+      let aVal: any
+      let bVal: any
+
+      switch (sort.field) {
+        case 'userId':     aVal = a.userId; bVal = b.userId; break
+        case 'product':    aVal = a.product; bVal = b.product; break
+        case 'status':     aVal = a.status; bVal = b.status; break
+        case 'assignedBy': aVal = a.assignedBy; bVal = b.assignedBy; break
+        case 'deadline':   aVal = new Date(a.deadline).getTime(); bVal = new Date(b.deadline).getTime(); break
+        case 'training':   
+          aVal = trainingMap[a.trainingId]?.name ?? ''
+          bVal = trainingMap[b.trainingId]?.name ?? ''
+          break
+        default:           return 0
+      }
+
+      if (aVal < bVal) return sort.order === 'asc' ? -1 : 1
+      if (aVal > bVal) return sort.order === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [assignments, statusFilter, productFilter, search, trainingMap, sort])
 
   const counts = {
     total:      assignments.length,
@@ -329,6 +365,23 @@ export default function AssignmentPage() {
 
   const completionPct = counts.total > 0
     ? Math.round((counts.completed / counts.total) * 100) : 0
+
+  const handleSort = (field: SortField) => {
+    setSort(prev => {
+      if (prev.field === field) {
+        if (prev.order === 'asc') return { field, order: 'desc' }
+        if (prev.order === 'desc') return { field, order: null }
+        return { field, order: 'asc' }
+      }
+      return { field, order: 'asc' }
+    })
+  }
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sort.field !== field || !sort.order) return <ArrowUpDown size={12} className="ml-1 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+    if (sort.order === 'asc') return <ArrowUp size={12} className="ml-1 text-primary-500" />
+    return <ArrowDown size={12} className="ml-1 text-primary-500" />
+  }
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -429,9 +482,23 @@ export default function AssignmentPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/70">
-                  {['Learner', 'Training', 'Product', 'Status', 'Deadline', 'Assigned By'].map(h => (
-                    <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      {h}
+                  {[
+                    { label: 'Learner',    key: 'userId' },
+                    { label: 'Training',   key: 'training' },
+                    { label: 'Product',    key: 'product' },
+                    { label: 'Status',     key: 'status' },
+                    { label: 'Deadline',   key: 'deadline' },
+                    { label: 'Assigned By',key: 'assignedBy' },
+                  ].map(h => (
+                    <th 
+                      key={h.key} 
+                      onClick={() => handleSort(h.key as SortField)}
+                      className="group cursor-pointer select-none px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hover:bg-gray-100/80 transition-colors"
+                    >
+                      <div className="flex items-center">
+                        {h.label}
+                        <SortIcon field={h.key as SortField} />
+                      </div>
                     </th>
                   ))}
                 </tr>
