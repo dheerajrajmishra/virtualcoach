@@ -2,11 +2,11 @@ import { Platform } from 'react-native';
 
 const CMS_HOST = Platform.OS === 'web'
   ? 'http://localhost:8080'
-  : 'http://192.168.1.8:8080';
+  : 'http://10.224.203.145:8080';
 
 const MOBILE_HOST = Platform.OS === 'web'
   ? 'http://localhost:8081'
-  : 'http://192.168.1.8:8081';
+  : 'http://10.224.203.145:8081';
 
 const BASE = `${CMS_HOST}/api`;
 const MOBILE_BASE = `${MOBILE_HOST}/api`;
@@ -62,8 +62,8 @@ export async function fetchSlides(trainingId: string): Promise<Slide[]> {
   return res.json();
 }
 
-export interface AskRequest  { question: string; locale: string; slideIndex?: number }
-export interface FaqSource   { question: string; answer: string; slideIndex: number }
+export interface AskRequest { question: string; locale: string; slideIndex?: number }
+export interface FaqSource { question: string; answer: string; slideIndex: number }
 export interface AskResponse { answer: string; sources: FaqSource[]; usedRag: boolean }
 
 export async function askFaq(trainingId: string, req: AskRequest): Promise<AskResponse> {

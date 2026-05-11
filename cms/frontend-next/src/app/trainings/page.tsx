@@ -228,14 +228,7 @@ export default function TrainingsPage() {
                       <ArrowRight size={16} />
                     </button>
                     
-                    <Link
-                      href={`/preview/${t.id}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-xl transition-colors"
-                      title="Preview Training Content"
-                    >
-                      <Eye size={20} />
-                    </Link>
+
 
                     <div className={`p-2 rounded-xl transition-colors ${isExpanded ? 'bg-primary-100 text-primary-600' : 'text-gray-300 hover:text-gray-600 hover:bg-gray-100'}`}>
                       <ChevronRight size={20} className={`transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''}`} />

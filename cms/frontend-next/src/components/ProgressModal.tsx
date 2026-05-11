@@ -129,14 +129,7 @@ export default function ProgressModal({ trainingId, isOpen, onClose }: ProgressM
           </Link>
           
           <div className="flex gap-3">
-             {isReady && (
-                <Link
-                  href={`/preview/${trainingId}`}
-                  className="btn-primary py-1.5 px-4 text-xs flex items-center gap-2"
-                >
-                  Preview Module <ArrowRight size={14} />
-                </Link>
-             )}
+
              {(isReady || isError) && (
                <button onClick={onClose} className="btn-secondary py-1.5 px-4 text-xs font-bold">
                  Close

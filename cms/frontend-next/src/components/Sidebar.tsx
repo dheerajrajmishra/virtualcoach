@@ -10,7 +10,6 @@ const NAV_ITEMS = [
   { to: '/trainings',   icon: BookOpen,        label: 'Trainings'           },
   { to: '/',            icon: UploadCloud,     label: 'Upload Training'     },
   { to: '/processing',  icon: Activity,        label: 'Processing Pipeline' },
-  { to: '/preview',     icon: Eye,             label: 'Preview'             },
   { to: '/assignments', icon: Users,           label: 'Assignments'         },
 ]
 
@@ -27,10 +26,10 @@ export function Sidebar() {
         {navOpen && (
           <div className="min-w-0 flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-violet-600 flex items-center justify-center shadow-lg shadow-primary-500/30">
-              <span className="font-bold text-white text-sm">PP</span>
+              <span className="font-bold text-white text-sm">VC</span>
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight text-white/90">Pitch Perfect</h1>
+              <h1 className="text-lg font-bold tracking-tight text-white/90">Virtual Coach</h1>
             </div>
           </div>
         )}
@@ -79,7 +78,7 @@ export function Sidebar() {
         {navOpen && (
           <div className="min-w-0">
             <p className="text-sm font-medium text-white/90 truncate">Admin User</p>
-            <p className="text-xs text-gray-500 truncate">admin@pitchperfect.com</p>
+            <p className="text-xs text-gray-500 truncate">admin@virtualcoach.ai</p>
           </div>
         )}
       </div>

@@ -97,7 +97,7 @@ public class RagService {
         // but we still prioritize the current slide's context if it exists.
         return faqCacheService.findByTrainingId(trainingId)
                 .stream()
-                .limit(20) // Limit to 20 to avoid exceeding token limits while still being comprehensive
+                .limit(maxContextFaqs) // Limit context items to avoid exceeding token limits
                 .map(faq -> {
                     String q = faq.getQuestions() != null
                             ? faq.getQuestions().getOrDefault(locale, faq.getQuestions().getOrDefault("en", ""))

@@ -207,7 +207,7 @@ function PhonePreviewModal({
         <AvatarDisplay config={avatarConfig} size={24} />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-white text-[11px] font-bold truncate">Pitch Perfect</p>
+        <p className="text-white text-[11px] font-bold truncate">Virtual Coach</p>
         <p className="text-white/60 text-[9px]">{LANG_META[locale]?.name ?? locale}</p>
       </div>
       <span className="text-white/60 text-[10px] flex-shrink-0">{currentIndex + 1}/{slides.length}</span>
@@ -415,7 +415,7 @@ function PhonePreviewModal({
                     <AvatarDisplay config={avatarConfig} size={20} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-white text-[10px] font-bold leading-none truncate">Pitch Perfect</p>
+                    <p className="text-white text-[10px] font-bold leading-none truncate">Virtual Coach</p>
                     <p className="text-white/60 text-[8px] mt-0.5">{LANG_META[locale]?.name ?? locale}</p>
                   </div>
                   <span className="text-white/60 text-[9px] flex-shrink-0 font-medium">{currentIndex + 1}/{slides.length}</span>

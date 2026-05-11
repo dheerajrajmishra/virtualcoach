@@ -19,14 +19,18 @@ type Filter = typeof FILTERS[number];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmtDate(iso: string | null) {
+function fmtDate(iso: string | null | undefined) {
   if (!iso) return '';
-  return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function deadlineInfo(deadline: string, completed: boolean) {
-  if (completed) return { label: '', urgent: false };
-  const diff = Math.ceil((new Date(deadline).getTime() - Date.now()) / 86_400_000);
+function deadlineInfo(deadline: string | null | undefined, completed: boolean) {
+  if (completed || !deadline) return { label: '', urgent: false };
+  const d = new Date(deadline);
+  if (isNaN(d.getTime())) return { label: '', urgent: false };
+  const diff = Math.ceil((d.getTime() - Date.now()) / 86_400_000);
   if (diff < 0)   return { label: `${Math.abs(diff)}d overdue`, urgent: true,  color: '#ef4444' };
   if (diff === 0) return { label: 'Due today',                  urgent: true,  color: '#f97316' };
   if (diff <= 3)  return { label: `${diff}d left`,              urgent: true,  color: '#f59e0b' };

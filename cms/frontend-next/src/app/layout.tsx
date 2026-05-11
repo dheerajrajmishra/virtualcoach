@@ -8,7 +8,7 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Pitch Perfect CMS',
+  title: 'Virtual Coach CMS',
   description: 'Content Management System',
 }
 
