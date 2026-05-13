@@ -8,8 +8,8 @@ const MOBILE_HOST = Platform.OS === 'web'
   ? 'http://localhost:8081'
   : 'http://10.224.203.145:8081';
 
-const BASE = `${CMS_HOST}/api`;
-const MOBILE_BASE = `${MOBILE_HOST}/api`;
+export const BASE = `${CMS_HOST}/api`;
+export const MOBILE_BASE = `${MOBILE_HOST}/api`;
 
 const HEADERS = { 'X-User-Id': 'learner-uid', 'Content-Type': 'application/json' };
 
@@ -67,16 +67,23 @@ export interface FaqSource { question: string; answer: string; slideIndex: numbe
 export interface AskResponse { answer: string; sources: FaqSource[]; usedRag: boolean }
 
 export async function askFaq(trainingId: string, req: AskRequest): Promise<AskResponse> {
-  const res = await fetch(`${MOBILE_BASE}/learner/ask`, {
-    method: 'POST',
-    headers: HEADERS,
-    body: JSON.stringify({
-      trainingId,
-      ...req
-    }),
-  });
-  if (!res.ok) throw new Error('FAQ service unavailable');
-  return res.json();
+  try {
+    const res = await fetch(`${MOBILE_BASE}/learner/ask`, {
+      method: 'POST',
+      headers: HEADERS,
+      body: JSON.stringify({
+        trainingId,
+        ...req
+      }),
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status} ${txt}`);
+    }
+    return res.json();
+  } catch (err: any) {
+    throw new Error(`askFaq: ${err.message}`);
+  }
 }
 
 export interface QuizQuestion {
@@ -112,12 +119,19 @@ export async function submitQuizText(
   locale: string,
   response: string,
 ): Promise<EvalResult> {
-  const res = await fetch(
-    `${MOBILE_BASE}/evaluation/submit/text?trainingId=${encodeURIComponent(trainingId)}&quizId=${encodeURIComponent(quizId)}&locale=${encodeURIComponent(locale)}&response=${encodeURIComponent(response)}`,
-    { method: 'POST', headers: { 'X-User-Id': 'learner-uid' } },
-  );
-  if (!res.ok) throw new Error('Evaluation failed');
-  return res.json();
+  try {
+    const res = await fetch(
+      `${MOBILE_BASE}/evaluation/submit/text?trainingId=${encodeURIComponent(trainingId)}&quizId=${encodeURIComponent(quizId)}&locale=${encodeURIComponent(locale)}&response=${encodeURIComponent(response)}`,
+      { method: 'POST', headers: { 'X-User-Id': 'learner-uid' } },
+    );
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status} ${txt}`);
+    }
+    return res.json();
+  } catch (err: any) {
+    throw new Error(`submitQuizText: ${err.message}`);
+  }
 }
 
 export interface LearnerProgress {
@@ -217,19 +231,33 @@ export async function fetchFaqHints(trainingId: string, locale: string): Promise
 
 export async function transcribeAudio(uri: string, locale: string): Promise<string> {
   const formData = new FormData();
-  formData.append('audio', {
-    uri,
-    type: 'audio/m4a',
-    name: 'recording.m4a',
-  } as any);
 
-  const res = await fetch(`${MOBILE_BASE}/learner/transcribe?locale=${locale}`, {
-    method: 'POST',
-    headers: { 'X-User-Id': 'learner-uid' },
-    body: formData,
-  });
+  if (Platform.OS === 'web') {
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    formData.append('audio', blob, 'recording.m4a');
+  } else {
+    formData.append('audio', {
+      uri,
+      type: 'audio/m4a',
+      name: 'recording.m4a',
+    } as any);
+  }
 
-  if (!res.ok) throw new Error('Transcription failed');
-  const data = await res.json();
-  return data.text || '';
+  try {
+    const res = await fetch(`${MOBILE_BASE}/learner/transcribe?locale=${locale}`, {
+      method: 'POST',
+      headers: { 'X-User-Id': 'learner-uid' },
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status} ${txt}`);
+    }
+    const data = await res.json();
+    return data.text || '';
+  } catch (err: any) {
+    throw new Error(`transcribeAudio: ${err.message}`);
+  }
 }

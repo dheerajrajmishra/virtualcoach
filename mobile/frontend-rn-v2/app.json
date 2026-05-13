@@ -15,7 +15,11 @@
     "ios": {
       "supportsTablet": true
     },
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "android": {
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
