@@ -1,0 +1,1512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VirtualCoach — Product Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+/* ─── Reset & Base ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --p50:#eef2ff; --p100:#e0e7ff; --p200:#c7d2fe; --p300:#a5b4fc;
+  --p400:#818cf8; --p500:#6366f1; --p600:#4f46e5; --p700:#4338ca;
+  --p800:#3730a3; --p900:#312e81;
+  --brand:#0f172a; --brand-l:#1e293b; --brand-a:#334155;
+  --violet:#7c3aed; --sky:#0ea5e9; --emerald:#10b981; --rose:#f43f5e;
+  --amber:#f59e0b;
+  --white:#ffffff; --gray-50:#f8fafc; --gray-100:#f1f5f9;
+  --gray-200:#e2e8f0; --gray-300:#cbd5e1; --gray-400:#94a3b8;
+  --gray-500:#64748b; --gray-600:#475569; --gray-700:#334155;
+  --gray-800:#1e293b; --gray-900:#0f172a;
+}
+html, body { width:100%; height:100%; overflow:hidden; font-family:'Inter',sans-serif; background:#000; }
+
+/* ─── Stage ────────────────────────────────────────────────────── */
+#stage {
+  position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+}
+.slide {
+  position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  opacity:0; transform:translateY(40px) scale(.97);
+  transition:opacity .6s cubic-bezier(.4,0,.2,1), transform .6s cubic-bezier(.4,0,.2,1);
+  pointer-events:none; overflow:hidden;
+}
+.slide.active {
+  opacity:1; transform:translateY(0) scale(1); pointer-events:auto;
+}
+.slide.exit {
+  opacity:0; transform:translateY(-40px) scale(.97);
+  transition:opacity .4s ease, transform .4s ease;
+}
+
+/* ─── Progress bar ─────────────────────────────────────────────── */
+#progress-bar {
+  position:fixed; bottom:0; left:0; height:3px;
+  background:linear-gradient(90deg, var(--p500), var(--violet));
+  transition:width .5s cubic-bezier(.4,0,.2,1); z-index:100;
+}
+
+/* ─── Controls ─────────────────────────────────────────────────── */
+#controls {
+  position:fixed; bottom:18px; left:50%; transform:translateX(-50%);
+  display:flex; gap:10px; align-items:center; z-index:100;
+  background:rgba(15,23,42,.75); backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,.1); border-radius:999px;
+  padding:8px 18px;
+}
+#controls button {
+  background:none; border:none; cursor:pointer; color:rgba(255,255,255,.7);
+  font-size:13px; padding:4px 10px; border-radius:999px;
+  transition:all .2s; font-family:'Inter',sans-serif;
+}
+#controls button:hover { background:rgba(255,255,255,.12); color:#fff; }
+#controls button.active-btn { background:var(--p600); color:#fff; }
+#slide-counter { color:rgba(255,255,255,.5); font-size:12px; min-width:52px; text-align:center; }
+#pause-btn { font-size:16px !important; }
+
+/* ─── Mesh background utility ──────────────────────────────────── */
+.bg-dark {
+  background:var(--brand);
+}
+.bg-mesh-dark {
+  background: var(--brand);
+  background-image:
+    radial-gradient(at 20% 20%, rgba(99,102,241,.25) 0,transparent 55%),
+    radial-gradient(at 80% 10%, rgba(124,58,237,.2) 0,transparent 55%),
+    radial-gradient(at 60% 80%, rgba(14,165,233,.12) 0,transparent 50%);
+}
+.bg-light {
+  background: var(--gray-50);
+  background-image:
+    radial-gradient(at 30% 10%, rgba(99,102,241,.07) 0,transparent 50%),
+    radial-gradient(at 80% 80%, rgba(124,58,237,.05) 0,transparent 50%);
+}
+.bg-brand-grad {
+  background:linear-gradient(135deg, var(--p700) 0%, var(--violet) 100%);
+}
+
+/* ─── Typography helpers ───────────────────────────────────────── */
+.tag {
+  display:inline-flex; align-items:center; gap:6px;
+  font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+  padding:5px 12px; border-radius:999px;
+}
+.tag-primary { background:rgba(99,102,241,.15); color:var(--p400); border:1px solid rgba(99,102,241,.25); }
+.tag-green   { background:rgba(16,185,129,.15); color:#34d399; border:1px solid rgba(16,185,129,.25); }
+.tag-amber   { background:rgba(245,158,11,.15); color:#fbbf24; border:1px solid rgba(245,158,11,.25); }
+.tag-sky     { background:rgba(14,165,233,.15);  color:#38bdf8; border:1px solid rgba(14,165,233,.25); }
+
+.headline {
+  font-size:clamp(2rem,5vw,4rem); font-weight:800; line-height:1.1;
+  letter-spacing:-.03em;
+}
+.subhead {
+  font-size:clamp(1rem,2.2vw,1.5rem); font-weight:400;
+  line-height:1.5; opacity:.7;
+}
+.label-text {
+  font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; opacity:.5;
+}
+
+/* ─── Glass card ───────────────────────────────────────────────── */
+.glass {
+  background:rgba(255,255,255,.06); backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.1); border-radius:20px;
+}
+.glass-light {
+  background:rgba(255,255,255,.85); backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.6); border-radius:20px;
+  box-shadow:0 8px 40px rgba(0,0,0,.06);
+}
+.glass-dark {
+  background:rgba(15,23,42,.7); backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.08); border-radius:20px;
+}
+
+/* ─── Animated entry helpers ───────────────────────────────────── */
+@keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+@keyframes slideRight { from{opacity:0;transform:translateX(-24px)} to{opacity:1;transform:translateX(0)} }
+@keyframes slideLeft  { from{opacity:0;transform:translateX(24px)}  to{opacity:1;transform:translateX(0)} }
+@keyframes scaleIn { from{opacity:0;transform:scale(.85)} to{opacity:1;transform:scale(1)} }
+@keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
+@keyframes spin { to{transform:rotate(360deg)} }
+@keyframes shimmer {
+  0%{background-position:-200% 0}
+  100%{background-position:200% 0}
+}
+@keyframes typing {
+  from{width:0}
+  to{width:100%}
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+@keyframes float {
+  0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)}
+}
+@keyframes progress-fill {
+  from{width:0%} to{width:var(--target-w)}
+}
+
+.a1{animation:fadeUp .6s .1s both}
+.a2{animation:fadeUp .6s .25s both}
+.a3{animation:fadeUp .6s .4s both}
+.a4{animation:fadeUp .6s .55s both}
+.a5{animation:fadeUp .6s .7s both}
+.a6{animation:fadeUp .6s .85s both}
+.sr1{animation:slideRight .6s .1s both}
+.sr2{animation:slideRight .6s .3s both}
+.sr3{animation:slideRight .6s .5s both}
+.sl1{animation:slideLeft .6s .1s both}
+.sl2{animation:slideLeft .6s .3s both}
+.sc1{animation:scaleIn .6s .1s both}
+.sc2{animation:scaleIn .6s .3s both}
+.sc3{animation:scaleIn .6s .5s both}
+
+/* ─── SLIDE 1 — Hero ───────────────────────────────────────────── */
+#s1 { background:var(--brand); }
+#s1 .mesh {
+  position:absolute; inset:0; overflow:hidden;
+  background-image:
+    radial-gradient(ellipse at 25% 25%, rgba(99,102,241,.35) 0,transparent 55%),
+    radial-gradient(ellipse at 75% 75%, rgba(124,58,237,.25) 0,transparent 55%),
+    radial-gradient(ellipse at 75% 15%, rgba(14,165,233,.2)  0,transparent 50%);
+}
+#s1 .grid-lines {
+  position:absolute; inset:0;
+  background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+  background-size:60px 60px;
+}
+#s1 .badge {
+  display:inline-flex; align-items:center; gap:8px;
+  background:rgba(99,102,241,.15); border:1px solid rgba(99,102,241,.3);
+  border-radius:999px; padding:6px 16px; margin-bottom:28px;
+}
+#s1 .badge .dot {
+  width:8px; height:8px; border-radius:50%;
+  background:var(--p400); animation:pulse 2s infinite;
+}
+#s1 .badge span { font-size:13px; color:var(--p300); font-weight:500; }
+#s1 h1 {
+  font-size:clamp(3rem,7vw,6rem); font-weight:900; line-height:1.0;
+  letter-spacing:-.04em; color:#fff; text-align:center;
+}
+#s1 .gradient-text {
+  background:linear-gradient(135deg,var(--p400) 0%,#a78bfa 50%,var(--sky) 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+#s1 p {
+  font-size:clamp(1rem,2vw,1.35rem); color:rgba(255,255,255,.6);
+  max-width:580px; text-align:center; line-height:1.6; margin-top:20px;
+}
+#s1 .pills { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:32px; }
+#s1 .pill {
+  display:inline-flex; align-items:center; gap:7px;
+  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
+  border-radius:999px; padding:8px 18px;
+  font-size:13px; font-weight:500; color:rgba(255,255,255,.75);
+}
+#s1 .pill svg { opacity:.6; }
+#s1 .scroll-hint {
+  position:absolute; bottom:60px;
+  font-size:12px; color:rgba(255,255,255,.3); letter-spacing:.05em;
+  animation:fadeIn 1s 2s both;
+}
+
+/* ─── SLIDE 2 — The Challenge ──────────────────────────────────── */
+#s2 { background:var(--gray-50); }
+#s2 .pain-grid {
+  display:grid; grid-template-columns:repeat(3,1fr); gap:20px;
+  max-width:900px; width:100%; padding:0 40px;
+}
+#s2 .pain-card {
+  background:#fff; border:1px solid var(--gray-200); border-radius:18px;
+  padding:28px 24px; box-shadow:0 4px 20px rgba(0,0,0,.06);
+}
+#s2 .pain-icon {
+  width:48px; height:48px; border-radius:14px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:24px; margin-bottom:16px;
+}
+#s2 .pain-card h3 { font-size:15px; font-weight:700; color:var(--gray-800); margin-bottom:8px; }
+#s2 .pain-card p  { font-size:13px; color:var(--gray-500); line-height:1.6; }
+#s2 .stat-row { display:flex; gap:32px; margin-top:40px; }
+#s2 .stat { text-align:center; }
+#s2 .stat .num { font-size:2.5rem; font-weight:800; color:var(--p600); line-height:1; }
+#s2 .stat .desc{ font-size:12px; color:var(--gray-500); margin-top:4px; }
+
+/* ─── SLIDE 3 — Platform Overview ─────────────────────────────── */
+#s3 { background:var(--brand); }
+#s3 .arch {
+  display:flex; align-items:center; gap:0; max-width:900px; width:100%;
+  padding:0 40px;
+}
+#s3 .arch-box {
+  flex:1; border-radius:20px; padding:28px 24px;
+  position:relative;
+}
+#s3 .arch-arrow {
+  width:60px; flex-shrink:0; display:flex; flex-direction:column;
+  align-items:center; gap:4px; color:rgba(255,255,255,.3); font-size:22px;
+}
+#s3 .arch-title { font-size:11px; font-weight:700; letter-spacing:.08em;
+  text-transform:uppercase; margin-bottom:16px; }
+#s3 .arch-item { display:flex; align-items:center; gap:10px;
+  padding:9px 12px; border-radius:10px; margin-bottom:8px;
+  background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.07); }
+#s3 .arch-item .dot2 { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+#s3 .arch-item span { font-size:13px; color:rgba(255,255,255,.8); font-weight:500; }
+
+/* ─── SLIDE 4 — CMS Upload ─────────────────────────────────────── */
+#s4 { background:var(--gray-50); }
+#s4 .mockup {
+  width:820px; max-width:95vw;
+  background:#fff; border-radius:20px;
+  box-shadow:0 20px 60px rgba(0,0,0,.1);
+  overflow:hidden; border:1px solid var(--gray-200);
+}
+#s4 .mockup-header {
+  background:var(--brand); padding:14px 20px;
+  display:flex; align-items:center; gap:8px;
+}
+#s4 .dot3 { width:12px; height:12px; border-radius:50%; }
+#s4 .mockup-body { padding:28px; }
+#s4 .upload-area {
+  border:2px dashed var(--p300); border-radius:16px;
+  padding:36px; text-align:center; background:var(--p50);
+  position:relative; overflow:hidden;
+}
+#s4 .upload-pulse {
+  position:absolute; inset:0; border-radius:14px;
+  background:var(--p100); opacity:0;
+  animation:pulse 2s 1s infinite;
+}
+#s4 .form-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:20px; }
+#s4 .form-field { }
+#s4 .form-field label { font-size:12px; font-weight:600; color:var(--gray-600); display:block; margin-bottom:6px; }
+#s4 .form-field .fake-input {
+  border:1px solid var(--gray-200); border-radius:10px; padding:10px 14px;
+  font-size:13px; color:var(--gray-700); background:#fff;
+  display:flex; align-items:center; gap:8px;
+}
+#s4 .locale-chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+#s4 .locale-chip {
+  padding:4px 10px; border-radius:6px; font-size:11px; font-weight:600;
+  background:var(--p100); color:var(--p700);
+}
+#s4 .btn-fake {
+  margin-top:20px; background:var(--p600); color:#fff;
+  border-radius:12px; padding:12px 28px; font-size:14px; font-weight:600;
+  display:inline-flex; align-items:center; gap:8px;
+  box-shadow:0 4px 14px rgba(79,70,229,.35);
+}
+
+/* ─── SLIDE 5 — Ingestion Pipeline ────────────────────────────── */
+#s5 { background:var(--brand); }
+#s5 .pipe {
+  display:flex; align-items:flex-start; gap:0;
+  max-width:920px; width:100%; padding:0 30px;
+}
+#s5 .pipe-step {
+  flex:1; display:flex; flex-direction:column; align-items:center; gap:0;
+}
+#s5 .pipe-icon-wrap {
+  width:56px; height:56px; border-radius:16px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:26px; position:relative; z-index:1;
+}
+#s5 .pipe-line {
+  height:3px; flex:1; margin-top:27px;
+  background:linear-gradient(90deg,rgba(255,255,255,.15),rgba(255,255,255,.05));
+}
+#s5 .pipe-label { font-size:12px; font-weight:600; color:rgba(255,255,255,.8); margin-top:12px; text-align:center; }
+#s5 .pipe-sub   { font-size:11px; color:rgba(255,255,255,.4); margin-top:4px; text-align:center; max-width:90px; line-height:1.4; }
+#s5 .pipe-active .pipe-icon-wrap { animation:pulse 2s infinite; }
+
+#s5 .log-box {
+  max-width:700px; width:100%; margin-top:32px;
+  background:rgba(0,0,0,.35); border:1px solid rgba(255,255,255,.08);
+  border-radius:14px; padding:16px 20px; font-family:monospace;
+  font-size:12px; color:rgba(255,255,255,.6); line-height:1.8;
+}
+#s5 .log-line span { color:var(--p400); }
+#s5 .log-line.ok span { color:#34d399; }
+#s5 .log-line.warn span { color:#fbbf24; }
+
+/* ─── SLIDE 6 — CMS Dashboard ─────────────────────────────────── */
+#s6 { background:var(--gray-50); }
+#s6 .dash-wrap {
+  width:860px; max-width:95vw;
+  background:#fff; border-radius:20px;
+  box-shadow:0 16px 50px rgba(0,0,0,.09);
+  overflow:hidden; display:flex; height:420px;
+  border:1px solid var(--gray-200);
+}
+#s6 .sidebar {
+  width:200px; background:var(--brand); padding:20px 0;
+  display:flex; flex-direction:column; gap:2px; flex-shrink:0;
+}
+#s6 .sb-logo { padding:0 20px 20px; font-size:15px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px; }
+#s6 .sb-item {
+  display:flex; align-items:center; gap:10px;
+  padding:10px 20px; font-size:13px; color:rgba(255,255,255,.6);
+  cursor:pointer; transition:all .2s;
+}
+#s6 .sb-item.active { background:rgba(99,102,241,.2); color:#fff; border-right:3px solid var(--p500); }
+#s6 .sb-icon { font-size:16px; }
+#s6 .main { flex:1; padding:24px; overflow:hidden; }
+#s6 .stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px; }
+#s6 .stat-card {
+  background:var(--gray-50); border:1px solid var(--gray-100);
+  border-radius:12px; padding:16px;
+}
+#s6 .stat-card .val { font-size:22px; font-weight:800; color:var(--gray-900); }
+#s6 .stat-card .lbl { font-size:11px; color:var(--gray-500); margin-top:3px; }
+#s6 .stat-card .badge2 { font-size:10px; font-weight:600; padding:2px 8px; border-radius:6px; margin-top:6px; display:inline-block; }
+#s6 .green-badge { background:#dcfce7; color:#16a34a; }
+#s6 .table-header { display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr; gap:8px; padding:8px 12px; font-size:11px; font-weight:600; color:var(--gray-400); text-transform:uppercase; letter-spacing:.06em; }
+#s6 .table-row { display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr; gap:8px; padding:10px 12px; border-radius:10px; font-size:13px; align-items:center; }
+#s6 .table-row:nth-child(odd) { background:var(--gray-50); }
+#s6 .status-pill { padding:3px 10px; border-radius:999px; font-size:11px; font-weight:600; }
+#s6 .ready   { background:#dcfce7; color:#16a34a; }
+#s6 .process { background:#fef9c3; color:#854d0e; }
+#s6 .draft   { background:#f1f5f9; color:var(--gray-500); }
+
+/* ─── SLIDE 7 — Multi-language Audio ──────────────────────────── */
+#s7 { background:var(--brand); }
+#s7 .lang-grid {
+  display:grid; grid-template-columns:repeat(3,1fr); gap:16px;
+  max-width:780px; width:100%;
+}
+#s7 .lang-card {
+  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
+  border-radius:18px; padding:22px; display:flex; flex-direction:column; gap:12px;
+}
+#s7 .lang-flag { font-size:32px; }
+#s7 .lang-name { font-size:15px; font-weight:700; color:#fff; }
+#s7 .lang-code { font-size:11px; color:var(--p400); font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
+#s7 .waveform { display:flex; align-items:center; gap:3px; height:28px; }
+#s7 .wbar {
+  width:3px; border-radius:2px; background:var(--p400);
+  animation:wave var(--d,0.8s) var(--delay,0s) ease-in-out infinite alternate;
+}
+@keyframes wave { from{height:4px} to{height:var(--h,20px)} }
+#s7 .voice-label { font-size:11px; color:rgba(255,255,255,.4); }
+
+/* ─── SLIDE 8 — Mobile Training List ──────────────────────────── */
+#s8 { background:var(--gray-50); }
+#s8 .phones-wrap { display:flex; gap:40px; align-items:flex-start; }
+#s8 .phone {
+  width:220px; background:var(--brand); border-radius:36px;
+  padding:12px; box-shadow:0 24px 64px rgba(0,0,0,.3);
+  border:2px solid rgba(255,255,255,.1);
+}
+#s8 .phone-screen { background:var(--gray-900); border-radius:26px; overflow:hidden; }
+#s8 .phone-statusbar { padding:8px 16px; display:flex; justify-content:space-between; font-size:10px; color:rgba(255,255,255,.5); }
+#s8 .app-header { padding:14px 16px 10px; }
+#s8 .app-header h2 { font-size:18px; font-weight:800; color:#fff; }
+#s8 .app-header p { font-size:11px; color:rgba(255,255,255,.5); margin-top:2px; }
+#s8 .tabs { display:flex; gap:0; padding:0 16px 10px; }
+#s8 .tab { font-size:10px; font-weight:600; padding:5px 10px; border-radius:8px; color:rgba(255,255,255,.5); }
+#s8 .tab.active { background:var(--p600); color:#fff; }
+#s8 .training-item {
+  margin:0 12px 8px; padding:12px; background:rgba(255,255,255,.07);
+  border-radius:14px; border:1px solid rgba(255,255,255,.07);
+}
+#s8 .ti-name { font-size:12px; font-weight:700; color:#fff; }
+#s8 .ti-sub  { font-size:10px; color:rgba(255,255,255,.45); margin-top:2px; }
+#s8 .progress-bar2 { height:4px; background:rgba(255,255,255,.1); border-radius:2px; margin-top:8px; overflow:hidden; }
+#s8 .progress-fill2 { height:100%; border-radius:2px; background:linear-gradient(90deg,var(--p500),var(--violet)); }
+#s8 .ti-badge { display:inline-block; padding:2px 7px; border-radius:6px; font-size:9px; font-weight:700; margin-top:5px; }
+#s8 .in-progress { background:rgba(99,102,241,.2); color:var(--p400); }
+#s8 .not-started { background:rgba(255,255,255,.08); color:rgba(255,255,255,.5); }
+#s8 .completed { background:rgba(16,185,129,.2); color:#34d399; }
+
+/* ─── SLIDE 9 — Training Player ────────────────────────────────── */
+#s9 { background:var(--brand); }
+#s9 .player-wrap {
+  display:flex; gap:24px; max-width:900px; width:100%; padding:0 30px;
+  align-items:flex-start;
+}
+#s9 .slide-area {
+  flex:1; background:rgba(0,0,0,.4); border-radius:18px;
+  aspect-ratio:16/9; overflow:hidden; position:relative;
+  border:1px solid rgba(255,255,255,.1);
+}
+#s9 .slide-content {
+  position:absolute; inset:0; padding:24px;
+  background:linear-gradient(135deg,rgba(79,70,229,.15) 0%,rgba(124,58,237,.1) 100%);
+}
+#s9 .slide-thumb { width:100%; height:100%; border-radius:10px; background:rgba(255,255,255,.04);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; }
+#s9 .slide-nav { display:flex; align-items:center; justify-content:space-between; padding:12px 18px;
+  background:rgba(0,0,0,.3); }
+#s9 .nav-btn { padding:6px 14px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12);
+  border-radius:8px; font-size:12px; color:rgba(255,255,255,.7); }
+#s9 .slide-dots { display:flex; gap:4px; }
+#s9 .sdot { width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.25); }
+#s9 .sdot.active { background:var(--p400); }
+#s9 .side-panel { width:200px; flex-shrink:0; display:flex; flex-direction:column; gap:12px; }
+#s9 .audio-card {
+  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
+  border-radius:14px; padding:14px;
+}
+#s9 .chat-card {
+  flex:1; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
+  border-radius:14px; padding:14px; min-height:160px;
+}
+#s9 .chat-msg { font-size:11px; margin-bottom:8px; line-height:1.5; }
+#s9 .chat-q { color:rgba(255,255,255,.6); }
+#s9 .chat-a { color:var(--p300); }
+#s9 .chat-input {
+  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12);
+  border-radius:8px; padding:7px 10px; font-size:10px; color:rgba(255,255,255,.6);
+  display:flex; align-items:center; justify-content:space-between; margin-top:10px;
+}
+
+/* ─── SLIDE 10 — AI Quiz ───────────────────────────────────────── */
+#s10 { background:var(--gray-50); }
+#s10 .quiz-wrap {
+  display:flex; gap:32px; max-width:880px; width:100%; padding:0 30px;
+}
+#s10 .quiz-card {
+  flex:1; background:#fff; border:1px solid var(--gray-200); border-radius:20px;
+  padding:28px; box-shadow:0 8px 30px rgba(0,0,0,.07);
+}
+#s10 .quiz-q { font-size:16px; font-weight:700; color:var(--gray-800); margin-bottom:16px; line-height:1.5; }
+#s10 .ans-box {
+  background:var(--gray-50); border:1px solid var(--gray-200); border-radius:12px;
+  padding:14px; font-size:13px; color:var(--gray-700); line-height:1.6;
+  font-style:italic; margin-bottom:16px;
+}
+#s10 .score-ring { width:100px; height:100px; margin:0 auto 16px; position:relative; }
+#s10 .score-ring svg { transform:rotate(-90deg); }
+#s10 .score-ring .score-val {
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  font-size:22px; font-weight:800; color:var(--p600);
+}
+#s10 .rubric-row { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+#s10 .rubric-label { font-size:12px; color:var(--gray-600); flex:1; }
+#s10 .rubric-bar { flex:2; height:8px; background:var(--gray-100); border-radius:4px; overflow:hidden; }
+#s10 .rubric-fill { height:100%; border-radius:4px; }
+#s10 .rubric-score { font-size:12px; font-weight:700; color:var(--gray-700); width:28px; text-align:right; }
+#s10 .feedback-box {
+  background:linear-gradient(135deg,rgba(99,102,241,.06),rgba(124,58,237,.06));
+  border:1px solid rgba(99,102,241,.15); border-radius:12px;
+  padding:14px; font-size:12px; color:var(--gray-700); line-height:1.6;
+  margin-top:16px;
+}
+
+/* ─── SLIDE 11 — FAQ RAG ───────────────────────────────────────── */
+#s11 { background:var(--brand); }
+#s11 .rag-wrap { display:flex; gap:24px; max-width:860px; width:100%; padding:0 30px; }
+#s11 .chat-window {
+  flex:1; background:rgba(0,0,0,.35); border:1px solid rgba(255,255,255,.1);
+  border-radius:18px; overflow:hidden;
+}
+#s11 .chat-header { padding:14px 18px; border-bottom:1px solid rgba(255,255,255,.08);
+  font-size:13px; font-weight:600; color:#fff; display:flex; align-items:center; gap:8px; }
+#s11 .online-dot { width:8px; height:8px; border-radius:50%; background:#34d399; animation:pulse 2s infinite; }
+#s11 .messages { padding:16px; display:flex; flex-direction:column; gap:12px; }
+#s11 .msg { max-width:85%; }
+#s11 .msg.user { align-self:flex-end; }
+#s11 .msg-bubble { padding:10px 14px; border-radius:14px; font-size:12px; line-height:1.6; }
+#s11 .msg.user .msg-bubble { background:var(--p600); color:#fff; border-bottom-right-radius:4px; }
+#s11 .msg.ai .msg-bubble { background:rgba(255,255,255,.07); color:rgba(255,255,255,.85); border-bottom-left-radius:4px; }
+#s11 .msg-time { font-size:10px; opacity:.4; margin-top:4px; padding:0 4px; }
+#s11 .chat-input2 {
+  padding:12px 14px; border-top:1px solid rgba(255,255,255,.08);
+  display:flex; gap:8px;
+}
+#s11 .chat-input2 .fake-field { flex:1; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
+  border-radius:10px; padding:8px 12px; font-size:12px; color:rgba(255,255,255,.5); }
+#s11 .send-btn { background:var(--p600); border:none; border-radius:10px; padding:8px 14px;
+  color:#fff; font-size:13px; cursor:pointer; }
+#s11 .rag-info { width:220px; flex-shrink:0; display:flex; flex-direction:column; gap:14px; }
+#s11 .rag-step { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08);
+  border-radius:14px; padding:16px; }
+#s11 .rag-step-num { width:24px; height:24px; border-radius:50%; background:var(--p600);
+  font-size:11px; font-weight:700; color:#fff; display:flex; align-items:center; justify-content:center; margin-bottom:8px; }
+#s11 .rag-step h4 { font-size:12px; font-weight:700; color:#fff; margin-bottom:4px; }
+#s11 .rag-step p  { font-size:11px; color:rgba(255,255,255,.5); line-height:1.5; }
+
+/* ─── SLIDE 12 — Admin Analytics ──────────────────────────────── */
+#s12 { background:var(--gray-50); }
+#s12 .analytics-wrap { width:860px; max-width:95vw; }
+#s12 .tabs2 { display:flex; gap:4px; margin-bottom:20px; }
+#s12 .tab2 { padding:8px 18px; border-radius:10px; font-size:13px; font-weight:600;
+  cursor:pointer; color:var(--gray-500); }
+#s12 .tab2.active { background:#fff; color:var(--p600); box-shadow:0 2px 10px rgba(0,0,0,.08); }
+#s12 .analytics-grid { display:grid; grid-template-columns:1.5fr 1fr; gap:20px; }
+#s12 .chart-card { background:#fff; border:1px solid var(--gray-200); border-radius:18px; padding:24px; box-shadow:0 4px 16px rgba(0,0,0,.05); }
+#s12 .chart-title { font-size:14px; font-weight:700; color:var(--gray-800); margin-bottom:4px; }
+#s12 .chart-sub { font-size:12px; color:var(--gray-500); margin-bottom:18px; }
+#s12 .bar-chart { display:flex; align-items:flex-end; gap:8px; height:100px; }
+#s12 .bar { flex:1; border-radius:6px 6px 0 0; position:relative; }
+#s12 .bar-label { position:absolute; bottom:-18px; left:50%; transform:translateX(-50%); font-size:10px; color:var(--gray-500); white-space:nowrap; }
+#s12 .missed-list { display:flex; flex-direction:column; gap:10px; }
+#s12 .missed-item { display:flex; gap:12px; align-items:flex-start; padding:12px; background:var(--gray-50); border-radius:12px; }
+#s12 .missed-icon { width:32px; height:32px; border-radius:10px; background:rgba(244,63,94,.1); display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; }
+#s12 .missed-q { font-size:12px; font-weight:600; color:var(--gray-700); }
+#s12 .missed-meta { font-size:11px; color:var(--gray-500); margin-top:2px; }
+
+/* ─── SLIDE 13 — Unanswered + Admin ───────────────────────────── */
+/* reuses s12 patterns */
+
+/* ─── SLIDE 14 — Benefits / Key Numbers ───────────────────────── */
+#s14 { background:var(--brand); }
+#s14 .benefits-grid {
+  display:grid; grid-template-columns:repeat(2,1fr); gap:20px;
+  max-width:820px; width:100%;
+}
+#s14 .benefit-card {
+  background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1);
+  border-radius:20px; padding:28px; display:flex; gap:20px; align-items:flex-start;
+}
+#s14 .benefit-icon { width:52px; height:52px; border-radius:16px;
+  display:flex; align-items:center; justify-content:center; font-size:26px; flex-shrink:0; }
+#s14 .benefit-card h3 { font-size:16px; font-weight:700; color:#fff; margin-bottom:6px; }
+#s14 .benefit-card p  { font-size:13px; color:rgba(255,255,255,.55); line-height:1.6; }
+#s14 .benefit-metric { font-size:22px; font-weight:800; margin-top:8px; }
+
+/* ─── SLIDE 15 — Closing ───────────────────────────────────────── */
+#s15 {
+  background:var(--brand);
+  background-image:
+    radial-gradient(ellipse at 30% 30%, rgba(99,102,241,.4) 0,transparent 60%),
+    radial-gradient(ellipse at 70% 70%, rgba(124,58,237,.3) 0,transparent 60%);
+}
+#s15 h2 { font-size:clamp(2rem,5vw,3.8rem); font-weight:900; letter-spacing:-.04em; color:#fff; text-align:center; }
+#s15 .grad-text {
+  background:linear-gradient(135deg,var(--p300) 0%,#a78bfa 50%,var(--sky) 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+}
+#s15 .contact-row { display:flex; gap:14px; margin-top:36px; }
+#s15 .contact-pill {
+  display:flex; align-items:center; gap:8px;
+  background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12);
+  border-radius:12px; padding:12px 20px; font-size:13px; font-weight:500; color:rgba(255,255,255,.75);
+}
+#s15 .tech-row {
+  display:flex; gap:10px; margin-top:28px; flex-wrap:wrap; justify-content:center;
+}
+#s15 .tech-tag {
+  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08);
+  border-radius:8px; padding:6px 14px; font-size:11px; font-weight:600; color:rgba(255,255,255,.5);
+}
+</style>
+</head>
+<body>
+
+<div id="stage">
+
+<!-- ══════════════════════════════════════════════════════════════
+     SLIDE 1 — HERO
+═══════════════════════════════════════════════════════════════ -->
+<section class="slide" id="s1">
+  <div class="mesh"></div>
+  <div class="grid-lines"></div>
+  <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;">
+    <div class="badge a1">
+      <div class="dot"></div>
+      <span>AI-Powered Sales Training Platform</span>
+    </div>
+    <h1 class="a2">Virtual<span class="gradient-text">Coach</span></h1>
+    <p class="a3">Transform static slide decks into interactive, multilingual training experiences — powered by AI evaluation, RAG-based FAQ, and real-time learner analytics.</p>
+    <div class="pills a4">
+      <div class="pill"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>6 Languages</div>
+      <div class="pill"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>AI Evaluation</div>
+      <div class="pill"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>Smart FAQ</div>
+      <div class="pill"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>Analytics</div>
+    </div>
+  </div>
+  <div class="scroll-hint">SPACE or → to advance &nbsp;·&nbsp; ← to go back &nbsp;·&nbsp; P to pause</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SLIDE 2 — THE CHALLENGE
+═══════════════════════════════════════════════════════════════ -->
+<section class="slide" id="s2">
+  <div style="text-align:center;margin-bottom:36px;">
+    <div class="tag tag-primary a1" style="margin-bottom:12px;">The Problem</div>
+    <h2 class="headline a2" style="color:var(--gray-900)">Sales training is <span style="color:var(--rose)">broken</span></h2>
+    <p class="subhead a3" style="color:var(--gray-500);max-width:520px;margin:12px auto 0;">Scattered decks, no feedback loops, zero localisation, and no way to know if learners actually understood.</p>
+  </div>
+  <div class="pain-grid">
+    <div class="pain-card a4">
+      <div class="pain-icon" style="background:rgba(244,63,94,.1)">😤</div>
+      <h3>Language Barrier</h3>
+      <p>Field teams across regions get English-only slides with no native-language audio or context.</p>
+    </div>
+    <div class="pain-card a5">
+      <div class="pain-icon" style="background:rgba(245,158,11,.1)">📊</div>
+      <h3>No Measurable Outcomes</h3>
+      <p>Managers have no visibility into what reps learned, where they struggled, or who needs coaching.</p>
+    </div>
+    <div class="pain-card a6">
+      <div class="pain-icon" style="background:rgba(99,102,241,.1)">🔁</div>
+      <h3>Manual Update Cycle</h3>
+      <p>Product changes mean re-recording audio, redistributing decks, and hoping reps update their apps.</p>
+    </div>
+  </div>
+  <div class="stat-row a6" style="margin-top:40px;">
+    <div class="stat">
+      <div class="num">73%</div>
+      <div class="desc">of reps forget training within a week</div>
+    </div>
+    <div class="stat">
+      <div class="num">6×</div>
+      <div class="desc">languages needed for India field teams</div>
+    </div>
+    <div class="stat">
+      <div class="num">0</div>
+      <div class="desc">real-time feedback on comprehension</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SLIDE 3 — PLATFORM OVERVIEW
+═══════════════════════════════════════════════════════════════ -->
+<section class="slide bg-mesh-dark" id="s3">
+  <div style="text-align:center;margin-bottom:36px;z-index:1;position:relative;">
+    <div class="tag tag-sky a1" style="margin-bottom:12px;">The Solution</div>
+    <h2 class="headline a2" style="color:#fff;">One platform. <span style="color:var(--p400)">Two surfaces.</span></h2>
+    <p class="subhead a3" style="max-width:520px;margin:12px auto 0;color:rgba(255,255,255,.55);">Content managers build on CMS. Learners engage on mobile. AI handles everything in between.</p>
+  </div>
+  <div class="arch a4" style="position:relative;z-index:1;">
+    <!-- CMS box -->
+    <div class="arch-box glass" style="background:rgba(79,70,229,.12);border-color:rgba(99,102,241,.25);">
+      <div class="arch-title" style="color:var(--p400);">🖥️ &nbsp;CMS Portal</div>
+      <div class="arch-item"><div class="dot2" style="background:var(--p400)"></div><span>Upload PPTX + Excel</span></div>
+      <div class="arch-item"><div class="dot2" style="background:var(--p400)"></div><span>Multilingual Audio Gen</span></div>
+      <div class="arch-item"><div class="dot2" style="background:var(--p400)"></div><span>FAQ Embedding (RAG)</span></div>
+      <div class="arch-item"><div class="dot2" style="background:var(--p400)"></div><span>Training Management</span></div>
+      <div class="arch-item"><div class="dot2" style="background:var(--p400)"></div><span>Assign to Learners</span></div>
+      <div class="arch-item"><div class="dot2" style="background:var(--p400)"></div><span>Analytics Dashboard</span></div>
+    </div>
+    <!-- Arrow -->
+    <div class="arch-arrow">
+      <div style="font-size:28px;color:rgba(255,255,255,.25)">⇄</div>
+      <div style="font-size:10px;color:rgba(255,255,255,.3);text-align:center;">Shared<br>SQL DB</div>
+    </div>
+    <!-- AI / DB box -->
+    <div class="arch-box glass" style="background:rgba(124,58,237,.1);border-color:rgba(124,58,237,.25);max-width:180px;flex-shrink:0;">
+      <div class="arch-title" style="color:#a78bfa;">⚡ AI Services</div>
+      <div class="arch-item"><div class="dot2" style="background:#a78bfa"></div><span>Azure GPT-4o</span></div>
+      <div class="arch-item"><div class="dot2" style="background:#a78bfa"></div><span>Text Embeddings</span></div>
+      <div class="arch-item"><div class="dot2" style="background:#a78bfa"></div><span>TTS Audio</span></div>
+      <div class="arch-item"><div class="dot2" style="background:#a78bfa"></div><span>Transcription</span></div>
+    </div>
+    <div class="arch-arrow">
+      <div style="font-size:28px;color:rgba(255,255,255,.25)">⇄</div>
+    </div>
+    <!-- Mobile box -->
+    <div class="arch-box glass" style="background:rgba(14,165,233,.1);border-color:rgba(14,165,233,.25);">
+      <div class="arch-title" style="color:var(--sky);">📱 Mobile App</div>
+      <div class="arch-item"><div class="dot2" style="background:var(--sky)"></div><span>Slide Player + Audio</span></div>
+      <div class="arch-item"><div class="dot2" style="background:var(--sky)"></div><span>AI Quiz Evaluation</span></div>
+      <div class="arch-item"><div class="dot2" style="background:var(--sky)"></div><span>FAQ Chatbot (RAG)</span></div>
+      <div class="arch-item"><div class="dot2" style="background:var(--sky)"></div><span>Progress Tracking</span></div>
+      <div class="arch-item"><div class="dot2" style="background:var(--sky)"></div><span>6-Language Support</span></div>
+      <div class="arch-item"><div class="dot2" style="background:var(--sky)"></div><span>Voice Responses</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SLIDE 4 — CMS UPLOAD
+═══════════════════════════════════════════════════════════════ -->
+<section class="slide" id="s4">
+  <div style="text-align:center;margin-bottom:24px;">
+    <div class="tag tag-primary a1" style="margin-bottom:10px;">CMS — Step 1</div>
+    <h2 class="headline a2" style="color:var(--gray-900);">Upload &amp; Configure</h2>
+    <p class="subhead a3" style="color:var(--gray-500);max-width:480px;margin:10px auto 0;font-size:1rem;">Drop a PowerPoint deck and Excel data sheet. The platform does the rest.</p>
+  </div>
+  <div class="mockup a4">
+    <div class="mockup-header">
+      <div class="dot3" style="background:#ef4444"></div>
+      <div class="dot3" style="background:#f59e0b"></div>
+      <div class="dot3" style="background:#22c55e"></div>
+      <span style="color:rgba(255,255,255,.4);font-size:12px;margin-left:12px;">VirtualCoach CMS — New Training</span>
+    </div>
+    <div class="mockup-body">
+      <div class="upload-area">
+        <div class="upload-pulse"></div>
+        <div style="font-size:36px;margin-bottom:12px;position:relative;z-index:1;">📂</div>
+        <div style="font-size:15px;font-weight:700;color:var(--p700);position:relative;z-index:1;">Drop your PPTX + Excel here</div>
+        <div style="font-size:12px;color:var(--gray-500);margin-top:6px;position:relative;z-index:1;">or click to browse files</div>
+        <div style="display:flex;gap:8px;justify-content:center;margin-top:14px;position:relative;z-index:1;">
+          <div style="display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--gray-200);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;color:var(--gray-700)">📊 Product_Launch_Q3.pptx</div>
+          <div style="display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--gray-200);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;color:var(--gray-700)">📋 FAQ_Quiz_Data.xlsx</div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-field">
+          <label>Training Name</label>
+          <div class="fake-input">Product Launch — Q3 2025</div>
+        </div>
+        <div class="form-field">
+          <label>Active Locales</label>
+          <div class="locale-chips">
+            <span class="locale-chip">EN</span><span class="locale-chip">HI</span>
+            <span class="locale-chip">TA</span><span class="locale-chip">TE</span>
+            <span class="locale-chip">MR</span><span class="locale-chip">BN</span>
+          </div>
+        </div>
+      </div>
+      <div class="btn-fake">
+        <span>🚀</span> Start Ingestion
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SLIDE 5 — INGESTION PIPELINE
+═══════════════════════════════════════════════════════════════ -->
+<section class="slide bg-mesh-dark" id="s5">
+  <div style="text-align:center;margin-bottom:32px;position:relative;z-index:1;">
+    <div class="tag tag-amber a1" style="margin-bottom:10px;">CMS — Step 2</div>
+    <h2 class="headline a2" style="color:#fff;">Automated Ingestion Pipeline</h2>
+    <p class="subhead a3" style="max-width:520px;margin:10px auto 0;color:rgba(255,255,255,.55);">From raw files to production-ready training in minutes — fully automated.</p>
+  </div>
+  <div class="pipe a4" style="position:relative;z-index:1;">
+    <!-- Step 1 -->
+    <div class="pipe-step">
+      <div class="pipe-icon-wrap" style="background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.3);">📂</div>
+      <div class="pipe-label">Parse Files</div>
+      <div class="pipe-sub">Extract slides & FAQ/Quiz rows</div>
+    </div>
+    <div class="pipe-line"></div>
+    <!-- Step 2 -->
+    <div class="pipe-step pipe-active">
+      <div class="pipe-icon-wrap" style="background:rgba(245,158,11,.2);border:1px solid rgba(245,158,11,.3);">🎵</div>
+      <div class="pipe-label">Generate Audio</div>
+      <div class="pipe-sub">TTS per locale × 6 languages</div>
+    </div>
+    <div class="pipe-line"></div>
+    <!-- Step 3 -->
+    <div class="pipe-step">
+      <div class="pipe-icon-wrap" style="background:rgba(16,185,129,.2);border:1px solid rgba(16,185,129,.3);">🧠</div>
+      <div class="pipe-label">Embed FAQs</div>
+      <div class="pipe-sub">Azure text-embedding-3-small</div>
+    </div>
+    <div class="pipe-line"></div>
+    <!-- Step 4 -->
+    <div class="pipe-step">
+      <div class="pipe-icon-wrap" style="background:rgba(14,165,233,.2);border:1px solid rgba(14,165,233,.3);">☁️</div>
+      <div class="pipe-label">Upload Assets</div>
+      <div class="pipe-sub">GCS or local storage</div>
+    </div>
+    <div class="pipe-line"></div>
+    <!-- Step 5 -->
+    <div class="pipe-step">
+      <div class="pipe-icon-wrap" style="background:rgba(124,58,237,.2);border:1px solid rgba(124,58,237,.3);">✅</div>
+      <div class="pipe-label">Publish</div>
+      <div class="pipe-sub">Training goes READY</div>
+    </div>
+  </div>
+  <div class="log-box a5" style="position:relative;z-index:1;">
+    <div class="log-line ok"><span>[✓]</span> Parsed 24 slides from Product_Launch_Q3.pptx</div>
+    <div class="log-line ok"><span>[✓]</span> Parsed 18 FAQs + 12 quiz questions from Excel</div>
+    <div class="log-line"><span>[~]</span> Generating audio: en(✓) hi(✓) ta(✓) te(⟳) mr(⟳) bn(⟳)</div>
+    <div class="log-line"><span>[~]</span> Embedding FAQs: 12/18 complete (6 parallel workers)</div>
+    <div class="log-line warn"><span>[i]</span> Status: PROCESSING — ETA ~2 min</div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SLIDE 6 — CMS DASHBOARD
+═══════════════════════════════════════════════════════════════ -->
+<section class="slide" id="s6">
+  <div style="text-align:center;margin-bottom:24px;">
+    <div class="tag tag-green a1" style="margin-bottom:10px;">CMS — Dashboard</div>
+    <h2 class="headline a2" style="color:var(--gray-900);">Manage Every Training</h2>
+    <p class="subhead a3" style="color:var(--gray-500);font-size:1rem;max-width:440px;margin:10px auto 0;">Track status, slide counts, assignments, and evaluation outcomes at a glance.</p>
+  </div>
+  <div class="dash-wrap a4">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sb-logo">
+        <span style="font-size:18px">🎯</span> VirtualCoach
+      </div>
+      <div class="sb-item active"><span class="sb-icon">📊</span> Overview</div>
+      <div class="sb-item"><span class="sb-icon">📚</span> Trainings</div>
+      <div class="sb-item"><span class="sb-icon">❓</span> Missed FAQs</div>
+      <div class="sb-item"><span class="sb-icon">👥</span> Assignments</div>
+      <div class="sb-item"><span class="sb-icon">🏆</span> Quiz Results</div>
+    </div>
+    <!-- Main content -->
+    <div class="main">
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="val">12</div>
+          <div class="lbl">Total Trainings</div>
+          <div class="badge2 green-badge">+3 this month</div>
+        </div>
+        <div class="stat-card">
+          <div class="val">847</div>
+          <div class="lbl">Learners Assigned</div>
+          <div class="badge2 green-badge">↑ 12%</div>
+        </div>
+        <div class="stat-card">
+          <div class="val">64%</div>
+          <div class="lbl">Completion Rate</div>
+          <div class="badge2 green-badge">↑ 8%</div>
+        </div>
+        <div class="stat-card">
+          <div class="val">4.2</div>
+          <div class="lbl">Avg Quiz Score</div>
+          <div class="badge2 green-badge">↑ 0.4</div>
+        </div>
+      </div>
+      <div class="table-header">
+        <span>Training Name</span><span>Slides</span><span>Status</span><span>Assigned</span><span>Score</span>
+      </div>
+      <div class="table-row">
+        <span style="font-weight:600;font-size:13px">Product Launch Q3</span>
+        <span style="color:var(--gray-500)">24</span>
+        <span><span class="status-pill ready">READY</span></span>
+        <span style="color:var(--gray-500)">312</span>
+        <span style="font-weight:700;color:var(--p600)">4.6</span>
+      </div>
+      <div class="table-row">
+        <span style="font-weight:600;font-size:13px">Onboarding 2025</span>
+        <span style="color:var(--gray-500)">18</span>
+        <span><span class="status-pill ready">READY</span></span>
+        <span style="color:var(--gray-500)">284</span>
+        <span style="font-weight:700;color:var(--p600)">4.1</span>
+      </div>
+      <div class="table-row">
+        <span style="font-weight:600;font-size:13px">Compliance Update</span>
+        <span style="color:var(--gray-500)">11</span>
+        <span><span class="status-pill process">PROCESSING</span></span>
+        <span style="color:var(--gray-500)">—</span>
+        <span style="color:var(--gray-400)">—</span>
+      </div>
+      <div class="table-row">
+        <span style="font-weight:600;font-size:13px">New SKU Briefing</span>
+        <span style="color:var(--gray-500)">8</span>
+        <span><span class="status-pill draft">DRAFT</span></span>
+        <span style="color:var(--gray-500)">—</span>
+        <span style="color:var(--gray-400)">—</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SLIDE 7 — MULTILINGUAL AUDIO
+═══════════════════════════════════════════════════════════════ -->
+<section class="slide bg-dark" id="s7">
+  <div style="text-align:center;margin-bottom:32px;position:relative;z-index:1;">
+    <div class="tag tag-sky a1" style="margin-bottom:10px;">CMS — Audio Engine</div>
+    <h2 class="headline a2" style="color:#fff;">6 Languages. <span style="color:var(--sky)">Zero Effort.</span></h2>
+    <p class="subhead a3" style="max-width:500px;margin:10px auto 0;color:rgba(255,255,255,.55);">Each slide narrated automatically in English, Hindi, Tamil, Telugu, Marathi, and Bengali.</p>
+  </div>
+  <div class="lang-grid a4" style="position:relative;z-index:1;">
+    <div class="lang-card sc1">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="lang-flag">🇬🇧</div>
+        <div><div class="lang-name">English</div><div class="lang-code">EN · Adam</div></div>
+      </div>
+      <div class="waveform">
+        <div class="wbar" style="--h:22px;--d:.7s;--delay:0s"></div><div class="wbar" style="--h:14px;--d:.5s;--delay:.1s"></div><div class="wbar" style="--h:20px;--d:.6s;--delay:.15s"></div><div class="wbar" style="--h:8px;--d:.8s;--delay:.2s"></div><div class="wbar" style="--h:18px;--d:.55s;--delay:.1s"></div><div class="wbar" style="--h:24px;--d:.7s;--delay:.05s"></div><div class="wbar" style="--h:12px;--d:.65s;--delay:.3s"></div><div class="wbar" style="--h:20px;--d:.5s;--delay:.2s"></div><div class="wbar" style="--h:16px;--d:.6s;--delay:.1s"></div><div class="wbar" style="--h:10px;--d:.75s;--delay:.25s"></div><div class="wbar" style="--h:22px;--d:.55s;--delay:.0s"></div>
+      </div>
+      <div class="voice-label">Multilingual v2 · ElevenLabs</div>
+    </div>
+    <div class="lang-card sc2">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="lang-flag">🇮🇳</div>
+        <div><div class="lang-name">Hindi</div><div class="lang-code">HI · Anika</div></div>
+      </div>
+      <div class="waveform">
+        <div class="wbar" style="--h:18px;--d:.6s;--delay:.2s"></div><div class="wbar" style="--h:22px;--d:.7s;--delay:.05s"></div><div class="wbar" style="--h:10px;--d:.5s;--delay:.3s"></div><div class="wbar" style="--h:24px;--d:.65s;--delay:.1s"></div><div class="wbar" style="--h:16px;--d:.8s;--delay:.15s"></div><div class="wbar" style="--h:8px;--d:.55s;--delay:.25s"></div><div class="wbar" style="--h:20px;--d:.7s;--delay:.0s"></div><div class="wbar" style="--h:14px;--d:.6s;--delay:.35s"></div><div class="wbar" style="--h:22px;--d:.5s;--delay:.1s"></div><div class="wbar" style="--h:18px;--d:.65s;--delay:.2s"></div>
+      </div>
+      <div class="voice-label">Multilingual v2 · ElevenLabs</div>
+    </div>
+    <div class="lang-card sc3">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="lang-flag">🇮🇳</div>
+        <div><div class="lang-name">Tamil</div><div class="lang-code">TA · Rachel</div></div>
+      </div>
+      <div class="waveform">
+        <div class="wbar" style="--h:14px;--d:.7s;--delay:.1s"></div><div class="wbar" style="--h:20px;--d:.6s;--delay:.2s"></div><div class="wbar" style="--h:24px;--d:.5s;--delay:.05s"></div><div class="wbar" style="--h:10px;--d:.8s;--delay:.3s"></div><div class="wbar" style="--h:18px;--d:.65s;--delay:.15s"></div><div class="wbar" style="--h:22px;--d:.55s;--delay:.0s"></div><div class="wbar" style="--h:8px;--d:.7s;--delay:.25s"></div><div class="wbar" style="--h:16px;--d:.6s;--delay:.1s"></div><div class="wbar" style="--h:20px;--d:.5s;--delay:.2s"></div><div class="wbar" style="--h:12px;--d:.75s;--delay:.35s"></div>
+      </div>
+      <div class="voice-label">Multilingual v2 · ElevenLabs</div>
+    </div>
+    <div class="lang-card sc1" style="animation-delay:.6s">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="lang-flag">🇮🇳</div>
+        <div><div class="lang-name">Telugu</div><div class="lang-code">TE · Domi</div></div>
+      </div>
+      <div class="waveform">
+        <div class="wbar" style="--h:20px;--d:.6s;--delay:.0s"></div><div class="wbar" style="--h:12px;--d:.7s;--delay:.15s"></div><div class="wbar" style="--h:22px;--d:.5s;--delay:.25s"></div><div class="wbar" style="--h:16px;--d:.65s;--delay:.1s"></div><div class="wbar" style="--h:24px;--d:.8s;--delay:.05s"></div><div class="wbar" style="--h:10px;--d:.55s;--delay:.3s"></div><div class="wbar" style="--h:18px;--d:.7s;--delay:.2s"></div><div class="wbar" style="--h:14px;--d:.6s;--delay:.0s"></div><div class="wbar" style="--h:20px;--d:.5s;--delay:.1s"></div><div class="wbar" style="--h:8px;--d:.75s;--delay:.35s"></div>
+      </div>
+      <div class="voice-label">Multilingual v2 · ElevenLabs</div>
+    </div>
+    <div class="lang-card sc2" style="animation-delay:.7s">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="lang-flag">🇮🇳</div>
+        <div><div class="lang-name">Marathi</div><div class="lang-code">MR · Bella</div></div>
+      </div>
+      <div class="waveform">
+        <div class="wbar" style="--h:16px;--d:.7s;--delay:.3s"></div><div class="wbar" style="--h:24px;--d:.5s;--delay:.0s"></div><div class="wbar" style="--h:12px;--d:.65s;--delay:.2s"></div><div class="wbar" style="--h:20px;--d:.6s;--delay:.1s"></div><div class="wbar" style="--h:8px;--d:.8s;--delay:.25s"></div><div class="wbar" style="--h:22px;--d:.55s;--delay:.15s"></div><div class="wbar" style="--h:18px;--d:.7s;--delay:.05s"></div><div class="wbar" style="--h:10px;--d:.6s;--delay:.35s"></div><div class="wbar" style="--h:16px;--d:.5s;--delay:.2s"></div><div class="wbar" style="--h:22px;--d:.65s;--delay:.0s"></div>
+      </div>
+      <div class="voice-label">Multilingual v2 · ElevenLabs</div>
+    </div>
+    <div class="lang-card sc3" style="animation-delay:.8s">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="lang-flag">🇮🇳</div>
+        <div><div class="lang-name">Bengali</div><div class="lang-code">BN · Elli</div></div>
+      </div>
+      <div class="waveform">
+        <div class="wbar" style="--h:22px;--d:.6s;--delay:.1s"></div><div class="wbar" style="--h:10px;--d:.7s;--delay:.2s"></div><div class="wbar" style="--h:18px;--d:.5s;--delay:.0s"></div><div class="wbar" style="--h:24px;--d:.65s;--delay:.3s"></div><div class="wbar" style="--h:14px;--d:.8s;--delay:.15s"></div><div class="wbar" style="--h:20px;--d:.55s;--delay:.05s"></div><div class="wbar" style="--h:8px;--d:.7s;--delay:.25s"></div><div class="wbar" style="--h:16px;--d:.6s;--delay:.35s"></div><div class="wbar" style="--h:22px;--d:.5s;--delay:.1s"></div><div class="wbar" style="--h:12px;--d:.75s;--delay:.2s"></div>
+      </div>
+      <div class="voice-label">Multilingual v2 · ElevenLabs</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SLIDE 8 — MOBILE TRAINING LIST
+═══════════════════════════════════════════════════════════════ -->
+<section class="slide" id="s8">
+  <div style="text-align:center;margin-bottom:28px;">
+    <div class="tag tag-sky a1" style="margin-bottom:10px;">Mobile App — Home</div>
+    <h2 class="headline a2" style="color:var(--gray-900);">Learner's Training Feed</h2>
+    <p class="subhead a3" style="color:var(--gray-500);font-size:1rem;max-width:480px;margin:10px auto 0;">Personalised assignment queue sorted by urgency — In Progress first, then due dates.</p>
+  </div>
+  <div class="phones-wrap a4">
+    <div class="phone sc1">
+      <div class="phone-screen">
+        <div class="phone-statusbar"><span>9:41</span><span>📶 🔋</span></div>
+        <div class="app-header">
+          <h2>My Trainings</h2>
+          <p>3 active assignments</p>
+        </div>
+        <div class="tabs">
+          <div class="tab active">All</div>
+          <div class="tab">In Progress</div>
+          <div class="tab">Done</div>
+        </div>
+        <div class="training-item">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div class="ti-name">Product Launch Q3</div>
+            <div class="ti-badge in-progress">In Progress</div>
+          </div>
+          <div class="ti-sub">Due in 2 days · 24 slides</div>
+          <div class="progress-bar2"><div class="progress-fill2" style="width:62%"></div></div>
+          <div style="font-size:9px;color:var(--p400);margin-top:4px;">62% complete</div>
+        </div>
+        <div class="training-item">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div class="ti-name">Onboarding 2025</div>
+            <div class="ti-badge not-started">Not Started</div>
+          </div>
+          <div class="ti-sub">Due in 7 days · 18 slides</div>
+          <div class="progress-bar2"><div class="progress-fill2" style="width:0%"></div></div>
+        </div>
+        <div class="training-item">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div class="ti-name">Q2 Product Refresh</div>
+            <div class="ti-badge completed">✓ Done</div>
+          </div>
+          <div class="ti-sub">Completed · Score: 4.6/5</div>
+          <div class="progress-bar2"><div class="progress-fill2" style="width:100%"></div></div>
+        </div>
+      </div>
+    </div>
+    <!-- Info panel -->
+    <div style="max-width:320px;display:flex;flex-direction:column;gap:16px;">
+      <div class="glass-dark sc2" style="padding:22px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--p400);margin-bottom:12px;">Smart Sorting</div>
+        <div style="font-size:13px;color:rgba(255,255,255,.7);line-height:1.7;">
+          Assignments are ranked by:<br>
+          1. <span style="color:var(--p300);font-weight:600;">In Progress</span> — resume first<br>
+          2. <span style="color:#fbbf24;font-weight:600;">Nearest deadline</span> — urgency<br>
+          3. <span style="color:rgba(255,255,255,.4);">Not Started</span> → Completed
+        </div>
+      </div>
+      <div class="glass-dark sc3" style="padding:22px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--sky);margin-bottom:12px;">Progress Sync</div>
+        <div style="font-size:13px;color:rgba(255,255,255,.7);line-height:1.7;">
+          Resume exactly where you left off. Progress persists across sessions and devices via the mobile backend.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SLIDE 9 — TRAINING PLAYER
+═══════════════════════════════════════════════════════════════ -->
+<section class="slide bg-dark" id="s9">
+  <div style="text-align:center;margin-bottom:24px;position:relative;z-index:1;">
+    <div class="tag tag-primary a1" style="margin-bottom:10px;">Mobile App — Player</div>
+    <h2 class="headline a2" style="color:#fff;">Immersive Slide Experience</h2>
+    <p class="subhead a3" style="max-width:500px;margin:10px auto 0;color:rgba(255,255,255,.5);">Slides, audio narration, FAQ chat, and quizzes — all in one screen.</p>
+  </div>
+  <div class="player-wrap a4" style="position:relative;z-index:1;">
+    <!-- Slide area -->
+    <div style="flex:1;display:flex;flex-direction:column;gap:12px;">
+      <div class="slide-area">
+        <div class="slide-content">
+          <div class="slide-thumb">
+            <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.8);margin-bottom:8px;">Slide 15 of 24</div>
+            <div style="width:80%;height:60px;background:rgba(255,255,255,.06);border-radius:10px;margin-bottom:10px;display:flex;align-items:center;justify-content:center;">
+              <div style="width:60%;height:8px;background:rgba(255,255,255,.1);border-radius:4px;"></div>
+            </div>
+            <div style="width:70%;height:8px;background:rgba(255,255,255,.08);border-radius:4px;margin-bottom:6px;"></div>
+            <div style="width:50%;height:8px;background:rgba(255,255,255,.06);border-radius:4px;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-nav">
+        <div class="nav-btn">← Prev</div>
+        <div class="slide-dots">
+          <div class="sdot"></div><div class="sdot active"></div><div class="sdot"></div>
+          <div class="sdot"></div><div class="sdot"></div>
+        </div>
+        <div class="nav-btn">Next →</div>
+      </div>
+    </div>
+    <!-- Side panel -->
+    <div class="side-panel">
+      <div class="audio-card">
+        <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em;font-weight:600;">🔊 Audio — HI</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+          <div style="width:28px;height:28px;border-radius:50%;background:var(--p600);display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;">▶</div>
+          <div style="flex:1;height:4px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden;">
+            <div style="width:40%;height:100%;background:var(--p400);border-radius:2px;"></div>
+          </div>
+          <div style="font-size:10px;color:rgba(255,255,255,.4);">1:12</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <span style="font-size:9px;padding:3px 7px;border-radius:5px;background:var(--p600);color:#fff;font-weight:700;">HI</span>
+          <span style="font-size:9px;padding:3px 7px;border-radius:5px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.5);font-weight:600;">EN</span>
+          <span style="font-size:9px;padding:3px 7px;border-radius:5px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.5);font-weight:600;">TA</span>
+        </div>
+      </div>
+      <div class="chat-card">
+        <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:600;">💬 AI Assistant</div>
+        <div class="chat-msg chat-q">"What is the price of the new SKU?"</div>
+        <div class="chat-msg chat-a">"The new SKU is priced at ₹1,299 for retail and ₹999 for distributor channels..."</div>
+        <div class="chat-input">
+          <span>Ask about this slide...</span>
+          <span style="color:var(--p400);">↑</span>
+        </div>
+      </div>
+      <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:12px;text-align:center;cursor:pointer;">
+        <div style="font-size:18px;margin-bottom:4px;">🧠</div>
+        <div style="font-size:11px;font-weight:700;color:#fff;">Take Quiz</div>
+        <div style="font-size:10px;color:rgba(255,255,255,.4);margin-top:2px;">for this slide</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SLIDE 10 — AI QUIZ EVALUATION
+═══════════════════════════════════════════════════════════════ -->
+<section class="slide" id="s10">
+  <div style="text-align:center;margin-bottom:28px;">
+    <div class="tag tag-primary a1" style="margin-bottom:10px;">Mobile App — AI Quiz</div>
+    <h2 class="headline a2" style="color:var(--gray-900);">Rubric-Based Evaluation</h2>
+    <p class="subhead a3" style="color:var(--gray-500);font-size:1rem;max-width:500px;margin:10px auto 0;">GPT-4o scores free-text and voice answers against a detailed rubric. Not multiple choice.</p>
+  </div>
+  <div class="quiz-wrap a4">
+    <!-- Quiz question side -->
+    <div class="quiz-card">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--p500);margin-bottom:12px;">Question · Slide 15</div>
+      <div class="quiz-q">Explain the key differentiators of the new SKU compared to competitors. Mention at least two features.</div>
+      <div style="font-size:12px;font-weight:600;color:var(--gray-600);margin-bottom:8px;">Learner's Answer:</div>
+      <div class="ans-box">"The new SKU has better battery life, and it comes with an AI assistant built in which the competitor products don't have..."</div>
+      <div style="display:flex;gap:8px;margin-top:4px;">
+        <div style="font-size:11px;padding:4px 10px;background:rgba(99,102,241,.1);color:var(--p600);border-radius:6px;font-weight:600;">📝 Text Response</div>
+        <div style="font-size:11px;padding:4px 10px;background:rgba(16,185,129,.1);color:#059669;border-radius:6px;font-weight:600;">🎤 Voice Available</div>
+      </div>
+    </div>
+    <!-- Evaluation result side -->
+    <div class="quiz-card">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--emerald);margin-bottom:14px;">AI Evaluation Result</div>
+      <div class="score-ring">
+        <svg width="100" height="100" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="40" fill="none" stroke="#e0e7ff" stroke-width="8"/>
+          <circle cx="50" cy="50" r="40" fill="none" stroke="#4f46e5" stroke-width="8"
+            stroke-dasharray="188" stroke-dashoffset="38" stroke-linecap="round"/>
+        </svg>
+        <div class="score-val">4.2</div>
+      </div>
+      <div style="text-align:center;font-size:12px;color:var(--gray-500);margin-bottom:16px;">out of 5.0</div>
+      <!-- Rubric bars -->
+      <div class="rubric-row">
+        <div class="rubric-label">Accuracy</div>
+        <div class="rubric-bar"><div class="rubric-fill" style="width:90%;background:linear-gradient(90deg,var(--p500),var(--violet))"></div></div>
+        <div class="rubric-score">4.5</div>
+      </div>
+      <div class="rubric-row">
+        <div class="rubric-label">Completeness</div>
+        <div class="rubric-bar"><div class="rubric-fill" style="width:76%;background:linear-gradient(90deg,var(--sky),var(--p500))"></div></div>
+        <div class="rubric-score">3.8</div>
+      </div>
+      <div class="rubric-row">
+        <div class="rubric-label">Clarity</div>
+        <div class="rubric-bar"><div class="rubric-fill" style="width:85%;background:linear-gradient(90deg,var(--emerald),var(--sky))"></div></div>
+        <div class="rubric-score">4.2</div>
+      </div>
+      <div class="feedback-box">
+        <strong style="color:var(--p700)">AI Feedback:</strong> Good answer! You correctly identified battery life and AI assistant. Consider also mentioning the exclusive regional pricing advantage to strengthen your pitch.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SLIDE 11 — FAQ RAG CHATBOT
+═══════════════════════════════════════════════════════════════ -->
+<section class="slide bg-dark" id="s11">
+  <div style="text-align:center;margin-bottom:24px;position:relative;z-index:1;">
+    <div class="tag tag-green a1" style="margin-bottom:10px;">Mobile App — FAQ Assistant</div>
+    <h2 class="headline a2" style="color:#fff;">RAG-Powered FAQ Chatbot</h2>
+    <p class="subhead a3" style="max-width:500px;margin:10px auto 0;color:rgba(255,255,255,.5);">Learners ask anything. The AI searches embedded FAQs first, then falls back to GPT-4o.</p>
+  </div>
+  <div class="rag-wrap a4" style="position:relative;z-index:1;">
+    <div class="chat-window">
+      <div class="chat-header">
+        <div class="online-dot"></div>
+        AI Assistant — Product Launch Q3
+      </div>
+      <div class="messages">
+        <div class="msg ai">
+          <div class="msg-bubble">Hi! I'm your training assistant. Ask me anything about this product — pricing, features, competitive positioning, or how to handle objections.</div>
+          <div class="msg-time">AI Assistant</div>
+        </div>
+        <div class="msg user">
+          <div class="msg-bubble">What is the warranty policy for enterprise customers?</div>
+          <div class="msg-time" style="text-align:right">You</div>
+        </div>
+        <div class="msg ai">
+          <div class="msg-bubble">Enterprise customers get a <strong>3-year extended warranty</strong> with on-site service included. This is different from the standard 1-year consumer warranty. Renewal available at 15% of device cost annually.</div>
+          <div class="msg-time">AI Assistant · from training content</div>
+        </div>
+        <div class="msg user">
+          <div class="msg-bubble">How should I handle a competitor comparison objection?</div>
+          <div class="msg-time" style="text-align:right">You</div>
+        </div>
+        <div class="msg ai">
+          <div class="msg-bubble">Focus on TCO over 3 years. Our device costs 18% more upfront but saves ~32% on maintenance due to longer battery life. Lead with the AI-assistant feature — competitors have no equivalent.</div>
+          <div class="msg-time">AI Assistant · from training content</div>
+        </div>
+      </div>
+      <div class="chat-input2">
+        <div class="fake-field">Ask about pricing, features, objections...</div>
+        <div class="send-btn">↑</div>
+      </div>
+    </div>
+    <div class="rag-info">
+      <div class="rag-step sr1">
+        <div class="rag-step-num">1</div>
+        <h4>Embed Question</h4>
+        <p>Query vectorized with Azure text-embedding-3-small</p>
+      </div>
+      <div class="rag-step sr2">
+        <div class="rag-step-num">2</div>
+        <h4>Cosine Search</h4>
+        <p>Top-K FAQs retrieved by similarity from training's FAQ embeddings</p>
+      </div>
+      <div class="rag-step sr3">
+        <div class="rag-step-num">3</div>
+        <h4>GPT-4o Answer</h4>
+        <p>Generates grounded response from retrieved context</p>
+      </div>
+      <div class="rag-step" style="animation:slideRight .6s .7s both">
+        <div class="rag-step-num" style="background:var(--amber)">4</div>
+        <h4>Log if Unknown</h4>
+        <p>Unanswered questions logged for admin review and FAQ enrichment</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SLIDE 12 — ADMIN ANALYTICS
+═══════════════════════════════════════════════════════════════ -->
+<section class="slide" id="s12">
+  <div style="text-align:center;margin-bottom:20px;">
+    <div class="tag tag-amber a1" style="margin-bottom:10px;">CMS — Admin Analytics</div>
+    <h2 class="headline a2" style="color:var(--gray-900);">Full Visibility for Managers</h2>
+    <p class="subhead a3" style="color:var(--gray-500);font-size:1rem;max-width:480px;margin:10px auto 0;">Track completion, scores, missed questions, and coaching opportunities in real time.</p>
+  </div>
+  <div class="analytics-wrap a4">
+    <div class="tabs2">
+      <div class="tab2 active">Quiz Results</div>
+      <div class="tab2">Missed FAQs</div>
+      <div class="tab2">Assignments</div>
+    </div>
+    <div class="analytics-grid">
+      <!-- Bar chart -->
+      <div class="chart-card">
+        <div class="chart-title">Score Distribution — Product Launch Q3</div>
+        <div class="chart-sub">312 learners · Avg: 4.2 / 5.0</div>
+        <div class="bar-chart">
+          <div class="bar" style="height:20%;background:var(--rose);opacity:.7"><span class="bar-label">1</span></div>
+          <div class="bar" style="height:12%;background:var(--rose);opacity:.5"><span class="bar-label">1.5</span></div>
+          <div class="bar" style="height:18%;background:var(--amber);opacity:.7"><span class="bar-label">2</span></div>
+          <div class="bar" style="height:30%;background:var(--amber)"><span class="bar-label">2.5</span></div>
+          <div class="bar" style="height:55%;background:var(--amber)"><span class="bar-label">3</span></div>
+          <div class="bar" style="height:70%;background:#22c55e"><span class="bar-label">3.5</span></div>
+          <div class="bar" style="height:100%;background:var(--p500)"><span class="bar-label">4</span></div>
+          <div class="bar" style="height:85%;background:var(--p500)"><span class="bar-label">4.5</span></div>
+          <div class="bar" style="height:60%;background:var(--p600)"><span class="bar-label">5</span></div>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:28px;">
+          <div><div style="font-size:20px;font-weight:800;color:var(--p600)">78%</div><div style="font-size:11px;color:var(--gray-500)">Pass rate (≥3.5)</div></div>
+          <div><div style="font-size:20px;font-weight:800;color:var(--emerald)">4.2</div><div style="font-size:11px;color:var(--gray-500)">Avg score</div></div>
+          <div><div style="font-size:20px;font-weight:800;color:var(--amber)">22%</div><div style="font-size:11px;color:var(--gray-500)">Need coaching</div></div>
+        </div>
+      </div>
+      <!-- Missed FAQs -->
+      <div class="chart-card">
+        <div class="chart-title">Unanswered Questions</div>
+        <div class="chart-sub">Questions AI couldn't answer from FAQs</div>
+        <div class="missed-list">
+          <div class="missed-item">
+            <div class="missed-icon">❓</div>
+            <div>
+              <div class="missed-q">"Is there a student discount available?"</div>
+              <div class="missed-meta">Asked 14×  · Product Launch Q3</div>
+            </div>
+          </div>
+          <div class="missed-item">
+            <div class="missed-icon">❓</div>
+            <div>
+              <div class="missed-q">"What is the EMI option for enterprise?"</div>
+              <div class="missed-meta">Asked 9×  · Product Launch Q3</div>
+            </div>
+          </div>
+          <div class="missed-item">
+            <div class="missed-icon">❓</div>
+            <div>
+              <div class="missed-q">"Does it support 5G in all regions?"</div>
+              <div class="missed-meta">Asked 7×  · Onboarding 2025</div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:12px;padding:10px 14px;background:rgba(99,102,241,.06);border:1px dashed rgba(99,102,241,.2);border-radius:10px;font-size:12px;color:var(--p600);">
+          💡 Add these to your FAQ Excel and reprocess to fill the gaps.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SLIDE 13 — KEY BENEFITS
+═══════════════════════════════════════════════════════════════ -->
+<section class="slide bg-mesh-dark" id="s13">
+  <div style="text-align:center;margin-bottom:32px;position:relative;z-index:1;">
+    <div class="tag tag-green a1" style="margin-bottom:10px;">Why VirtualCoach</div>
+    <h2 class="headline a2" style="color:#fff;">Built for <span style="color:var(--p400)">Real Teams</span></h2>
+    <p class="subhead a3" style="max-width:500px;margin:10px auto 0;color:rgba(255,255,255,.55);">Not a generic LMS. Purpose-built for field sales training in multilingual markets.</p>
+  </div>
+  <div class="benefits-grid a4" style="position:relative;z-index:1;">
+    <div class="benefit-card">
+      <div class="benefit-icon" style="background:rgba(99,102,241,.2)">🌐</div>
+      <div>
+        <h3>Instant Localisation</h3>
+        <p>Upload once, get native audio in 6 languages. No re-recording, no bilingual coordinators.</p>
+        <div class="benefit-metric" style="color:var(--p400)">6 languages · 0 extra effort</div>
+      </div>
+    </div>
+    <div class="benefit-card">
+      <div class="benefit-icon" style="background:rgba(16,185,129,.2)">🧠</div>
+      <div>
+        <h3>AI-Powered Assessment</h3>
+        <p>Free-text and voice answers scored by GPT-4o rubrics. Richer insights than MCQs.</p>
+        <div class="benefit-metric" style="color:#34d399">5-dimension rubric · GPT-4o</div>
+      </div>
+    </div>
+    <div class="benefit-card">
+      <div class="benefit-icon" style="background:rgba(14,165,233,.2)">💬</div>
+      <div>
+        <h3>Always-On FAQ Assistant</h3>
+        <p>Learners get instant, grounded answers. Unanswered questions surface to admins for content improvement.</p>
+        <div class="benefit-metric" style="color:var(--sky)">RAG · Cosine search · GPT-4o</div>
+      </div>
+    </div>
+    <div class="benefit-card">
+      <div class="benefit-icon" style="background:rgba(245,158,11,.2)">📊</div>
+      <div>
+        <h3>Closed Feedback Loop</h3>
+        <p>Score distributions, missed FAQs, and completion rates feed directly back into content updates.</p>
+        <div class="benefit-metric" style="color:var(--amber)">Real-time · Actionable</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SLIDE 14 — TECH STACK SUMMARY
+═══════════════════════════════════════════════════════════════ -->
+<section class="slide bg-dark" id="s14">
+  <div style="text-align:center;margin-bottom:32px;position:relative;z-index:1;">
+    <div class="tag tag-primary a1" style="margin-bottom:10px;">Engineering</div>
+    <h2 class="headline a2" style="color:#fff;">Robust. Scalable. <span style="color:var(--p400)">Production-Ready.</span></h2>
+    <p class="subhead a3" style="max-width:500px;margin:10px auto 0;color:rgba(255,255,255,.55);">Enterprise-grade stack with async processing, caching, and horizontal-ready architecture.</p>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;max-width:860px;width:100%;padding:0 30px;position:relative;z-index:1;" class="a4">
+    <div class="glass" style="padding:24px;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--p400);margin-bottom:14px;">Backend</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.75)"><span style="font-size:16px">☕</span>Spring Boot 3.3 (Java 21)</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.75)"><span style="font-size:16px">🗄️</span>SQL Server + Hibernate</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.75)"><span style="font-size:16px">⚡</span>Spring Cache (@Cacheable)</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.75)"><span style="font-size:16px">🔄</span>Async + CompletableFuture</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.75)"><span style="font-size:16px">📦</span>Apache POI (PPTX parsing)</div>
+      </div>
+    </div>
+    <div class="glass" style="padding:24px;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--sky);margin-bottom:14px;">Frontend</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.75)"><span style="font-size:16px">▲</span>Next.js 16 (App Router)</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.75)"><span style="font-size:16px">📱</span>React Native + Expo 54</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.75)"><span style="font-size:16px">🔄</span>TanStack Query v5</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.75)"><span style="font-size:16px">🎨</span>Tailwind CSS v4</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.75)"><span style="font-size:16px">📦</span>Zustand v5</div>
+      </div>
+    </div>
+    <div class="glass" style="padding:24px;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#34d399;margin-bottom:14px;">AI / Cloud</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.75)"><span style="font-size:16px">🤖</span>Azure GPT-4o (Eval + RAG)</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.75)"><span style="font-size:16px">🔢</span>Azure Embeddings 3-small</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.75)"><span style="font-size:16px">🎙️</span>Audio Engine (TTS)</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.75)"><span style="font-size:16px">☁️</span>Google Cloud Storage</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.75)"><span style="font-size:16px">🗣️</span>Azure Speech (STT)</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SLIDE 15 — CLOSING
+═══════════════════════════════════════════════════════════════ -->
+<section class="slide" id="s15">
+  <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;text-align:center;">
+    <div class="tag tag-primary a1" style="margin-bottom:20px;">VirtualCoach · 2025</div>
+    <h2 class="a2">Train smarter.<br><span class="grad-text">Sell better.</span></h2>
+    <p style="font-size:clamp(.9rem,1.8vw,1.2rem);color:rgba(255,255,255,.55);max-width:500px;margin:20px auto 0;line-height:1.7;" class="a3">
+      A full-stack AI training platform that converts your existing product knowledge into multilingual, interactive learning — with measurable outcomes.
+    </p>
+    <div class="contact-row a4">
+      <div class="contact-pill">📧 genailab.gem3@samsung.com</div>
+      <div class="contact-pill">🌐 localhost:3000 — CMS Portal</div>
+      <div class="contact-pill">📱 localhost:8083 — Mobile App</div>
+    </div>
+    <div class="tech-row a5">
+      <span class="tech-tag">Spring Boot 3.3</span>
+      <span class="tech-tag">Next.js 16</span>
+      <span class="tech-tag">React Native Expo 54</span>
+      <span class="tech-tag">Azure GPT-4o</span>
+      <span class="tech-tag">SQL Server</span>
+      <span class="tech-tag">6 Languages</span>
+      <span class="tech-tag">RAG + Embeddings</span>
+    </div>
+  </div>
+</section>
+
+</div><!-- /stage -->
+
+<!-- ─── Progress bar ───────────────────────────────────────── -->
+<div id="progress-bar"></div>
+
+<!-- ─── Controls ───────────────────────────────────────────── -->
+<div id="controls">
+  <button id="prev-btn" title="Previous (←)">&#8592;</button>
+  <span id="slide-counter">1 / 15</span>
+  <button id="pause-btn" title="Pause/Play (P)">⏸</button>
+  <button id="next-btn" title="Next (→)">&#8594;</button>
+</div>
+
+<script>
+const SLIDES = Array.from(document.querySelectorAll('.slide'));
+const TOTAL  = SLIDES.length;
+const AUTO_MS = 8000;
+
+let current = 0;
+let paused  = false;
+let timer   = null;
+
+function show(idx, dir = 1) {
+  const prev = current;
+  current = ((idx % TOTAL) + TOTAL) % TOTAL;
+
+  if (prev !== current) {
+    SLIDES[prev].classList.remove('active');
+    SLIDES[prev].classList.add('exit');
+    setTimeout(() => SLIDES[prev].classList.remove('exit'), 500);
+  }
+  SLIDES[current].classList.add('active');
+
+  // Reset animations on the new slide by cloning children
+  const s = SLIDES[current];
+  s.querySelectorAll('[class*="a"],[class*="sr"],[class*="sl"],[class*="sc"]').forEach(el => {
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
+  });
+
+  updateUI();
+}
+
+function updateUI() {
+  document.getElementById('slide-counter').textContent = `${current + 1} / ${TOTAL}`;
+  document.getElementById('progress-bar').style.width = `${((current + 1) / TOTAL) * 100}%`;
+  document.getElementById('pause-btn').textContent = paused ? '▶' : '⏸';
+}
+
+function startTimer() {
+  clearTimeout(timer);
+  if (!paused) {
+    timer = setTimeout(() => {
+      show(current + 1);
+      startTimer();
+    }, AUTO_MS);
+  }
+}
+
+function togglePause() {
+  paused = !paused;
+  updateUI();
+  if (!paused) startTimer();
+  else clearTimeout(timer);
+}
+
+document.getElementById('next-btn').addEventListener('click', () => { show(current + 1); startTimer(); });
+document.getElementById('prev-btn').addEventListener('click', () => { show(current - 1); startTimer(); });
+document.getElementById('pause-btn').addEventListener('click', togglePause);
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); show(current + 1); startTimer(); }
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); show(current - 1); startTimer(); }
+  if (e.key === 'p' || e.key === 'P') togglePause();
+  if (e.key >= '1' && e.key <= '9') { show(parseInt(e.key) - 1); startTimer(); }
+});
+
+// Click on slide to advance
+document.getElementById('stage').addEventListener('click', e => {
+  if (!e.target.closest('#controls')) { show(current + 1); startTimer(); }
+});
+
+// Boot
+show(0);
+startTimer();
+</script>
+</body>
+</html>

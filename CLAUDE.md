@@ -251,19 +251,30 @@ Mobile backend always reads via `resolveMediaUrl()` which handles both URL forma
 
 ## Running the Project
 
-```bash
-# CMS Backend
-cd cms/backend-java && mvn spring-boot:run      # http://localhost:8080
-
-# Mobile Backend
-cd mobile/backend-java && mvn spring-boot:run   # http://localhost:8081
-
-# CMS Frontend
-cd cms/frontend-next && npm run dev             # http://localhost:3000
-
-# Mobile App
-cd mobile/frontend-rn-v2 && npx expo start     # Expo DevTools
+### Start All (Recommended)
+```powershell
+# Restart all projects (closes existing instances)
+.\start-all.ps1
 ```
+
+### Individual Components (Safe Start)
+These commands will kill any existing process on the required port before starting.
+
+```powershell
+# Safe Start CMS Backend (8080)
+powershell -Command \"Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue | ? { `$_.OwningProcess -gt 4 } | % { Stop-Process -Id `$_.OwningProcess -Force }; cd cms/backend-java; mvn spring-boot:run\"
+
+# Safe Start Mobile Backend (8081)
+powershell -Command \"Get-NetTCPConnection -LocalPort 8081 -ErrorAction SilentlyContinue | ? { `$_.OwningProcess -gt 4 } | % { Stop-Process -Id `$_.OwningProcess -Force }; cd mobile/backend-java; mvn spring-boot:run\"
+
+# Safe Start CMS Frontend (3000)
+powershell -Command \"Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | ? { `$_.OwningProcess -gt 4 } | % { Stop-Process -Id `$_.OwningProcess -Force }; cd cms/frontend-next; npm run dev\"
+
+# Safe Start Mobile App (8083)
+powershell -Command \"Get-NetTCPConnection -LocalPort 8083 -ErrorAction SilentlyContinue | ? { `$_.OwningProcess -gt 4 } | % { Stop-Process -Id `$_.OwningProcess -Force }; cd mobile/frontend-rn-v2; npx expo start --port 8083\"
+```
+
+### Traditional Individual Components
 
 ### First-Time DB Setup
 Run all scripts in `db/` against the `virtualcoach` SQL Server database:
