@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio, AVPlaybackStatus } from 'expo-av';
+import * as Speech from 'expo-speech';
 import { fetchSlides, resolveMediaUrl, askFaq, transcribeAudio, fetchQuiz, submitQuizText, fetchFaqHints, updateProgress, markTrainingComplete, QuizQuestion, EvalResult, Slide, Training } from '../api';
 
 if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
@@ -100,15 +101,17 @@ export default function TrainingPlayerScreen({ training, assignmentId, isReview 
 
   const [showBottomTranscript, setShowBottomTranscript] = useState(false);
 
-  const [showChat, setShowChat]         = useState(false);
-  const [chatInput, setChatInput]       = useState('');
-  const [faqHints, setFaqHints]         = useState<string[]>([]);
-  const [chatLoading, setChatLoading]   = useState(false);
-  const [chatMode, setChatMode]         = useState<'text' | 'voice' | 'video'>('text');
-  const [isRecording, setIsRecording]   = useState(false);
+  const [showChat, setShowChat]           = useState(false);
+  const [chatInput, setChatInput]         = useState('');
+  const [faqHints, setFaqHints]           = useState<string[]>([]);
+  const [chatLoading, setChatLoading]     = useState(false);
+  const [chatMode, setChatMode]           = useState<'text' | 'voice' | 'video'>('text');
+  const [isRecording, setIsRecording]     = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
-  const recordingRef                    = useRef<Audio.Recording | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([{
+  const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
+  const [faqAudioEnabled, setFaqAudioEnabled] = useState(false);
+  const recordingRef                      = useRef<Audio.Recording | null>(null);
+  const [chatMessages, setChatMessages]   = useState<ChatMessage[]>([{
     id: '0', role: 'assistant',
     text: `Hi! I'm your AI Coach for "${training.name}". Ask me anything about this training!`,
   }]);
@@ -398,6 +401,30 @@ export default function TrainingPlayerScreen({ training, assignmentId, isReview 
     }
   }
 
+  const LOCALE_TO_LANG: Record<string, string> = {
+    en: 'en-US', hi: 'hi-IN', ta: 'ta-IN', te: 'te-IN', mr: 'mr-IN', bn: 'bn-IN',
+  };
+
+  function speakText(msgId: string, text: string) {
+    Speech.stop();
+    setSpeakingMsgId(msgId);
+    Speech.speak(text, {
+      language: LOCALE_TO_LANG[locale] ?? 'en-US',
+      onDone:    () => setSpeakingMsgId(null),
+      onError:   () => setSpeakingMsgId(null),
+      onStopped: () => setSpeakingMsgId(null),
+    });
+  }
+
+  function toggleSpeak(msg: ChatMessage) {
+    if (speakingMsgId === msg.id) {
+      Speech.stop();
+      setSpeakingMsgId(null);
+    } else {
+      speakText(msg.id, msg.text);
+    }
+  }
+
   async function sendChatMessage(textOrEvent?: string | any) {
     const text = (typeof textOrEvent === 'string' ? textOrEvent : chatInput).trim();
     if (!text) return;
@@ -410,13 +437,17 @@ export default function TrainingPlayerScreen({ training, assignmentId, isReview 
         locale,
         slideIndex: currentIndex,
       });
-      setChatMessages(prev => [...prev, { id: `a${Date.now()}`, role: 'assistant', text: result.answer }]);
+      const newMsgId = `a${Date.now()}`;
+      setChatMessages(prev => [...prev, { id: newMsgId, role: 'assistant', text: result.answer }]);
+      if (faqAudioEnabled) speakText(newMsgId, result.answer);
     } catch {
+      const errMsgId = `a${Date.now()}`;
       setChatMessages(prev => [...prev, {
-        id: `a${Date.now()}`,
+        id: errMsgId,
         role: 'assistant',
         text: "Sorry, I couldn't reach the AI Coach right now. Please try again shortly.",
       }]);
+      if (faqAudioEnabled) speakText(errMsgId, "Sorry, I couldn't reach the AI Coach right now. Please try again shortly.");
     } finally {
       setChatLoading(false);
       setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 80);
@@ -800,7 +831,7 @@ export default function TrainingPlayerScreen({ training, assignmentId, isReview 
 
   // ── Chat / FAQ modal (Minimalist Redesign) ───────────────────────────────
   const chatModal = (
-    <Modal visible={showChat} animationType="slide" transparent onRequestClose={() => setShowChat(false)}>
+    <Modal visible={showChat} animationType="slide" transparent onRequestClose={() => { Speech.stop(); setSpeakingMsgId(null); setShowChat(false); }}>
       <KeyboardAvoidingView style={s.chatOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={s.chatSheet}>
 
@@ -812,9 +843,18 @@ export default function TrainingPlayerScreen({ training, assignmentId, isReview 
           {/* Header */}
           <View style={s.chatHeader}>
             <Text style={s.chatTitle}>AI Coach</Text>
-            <TouchableOpacity style={s.chatCloseBtn} onPress={() => setShowChat(false)}>
-              <Text style={s.chatCloseTxt}>✕</Text>
-            </TouchableOpacity>
+            <View style={s.chatHeaderRight}>
+              {/* Audio auto-play toggle */}
+              <TouchableOpacity style={s.audioToggleBtn} onPress={() => { setFaqAudioEnabled(v => !v); if (faqAudioEnabled) { Speech.stop(); setSpeakingMsgId(null); } }}>
+                <Text style={[s.audioToggleIcon, faqAudioEnabled && s.audioToggleIconOn]}>🔊</Text>
+                <View style={[s.audioToggleTrack, faqAudioEnabled && s.audioToggleTrackOn]}>
+                  <View style={[s.audioToggleThumb, faqAudioEnabled && s.audioToggleThumbOn]} />
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.chatCloseBtn} onPress={() => { Speech.stop(); setSpeakingMsgId(null); setShowChat(false); }}>
+                <Text style={s.chatCloseTxt}>✕</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Messages */}
@@ -822,9 +862,22 @@ export default function TrainingPlayerScreen({ training, assignmentId, isReview 
             onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}>
             {chatMessages.map(msg => (
               <View key={msg.id} style={[s.msgRow, msg.role === 'user' ? s.msgRowUser : s.msgRowBot]}>
-                <View style={[s.msgBubble, msg.role === 'user' ? s.msgUser : s.msgBot]}>
-                  <Text style={[s.msgText, msg.role === 'user' ? s.msgTextUser : s.msgTextBot]}>{msg.text}</Text>
-                </View>
+                {msg.role === 'assistant' ? (
+                  <View style={s.msgBotGroup}>
+                    <View style={[s.msgBubble, s.msgBot]}>
+                      <Text style={[s.msgText, s.msgTextBot]}>{msg.text}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[s.speakBtn, speakingMsgId === msg.id && s.speakBtnActive]}
+                      onPress={() => toggleSpeak(msg)}>
+                      <Text style={s.speakBtnTxt}>{speakingMsgId === msg.id ? '⏹' : '🔊'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={[s.msgBubble, s.msgUser]}>
+                    <Text style={[s.msgText, s.msgTextUser]}>{msg.text}</Text>
+                  </View>
+                )}
               </View>
             ))}
             {chatLoading && (
@@ -1372,6 +1425,22 @@ const s = StyleSheet.create({
   sendBtn:       { width: 44, height: 44, borderRadius: 22, backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
   sendBtnOff:    { backgroundColor: '#374151' },
   sendBtnTxt:    { fontSize: 16, color: '#fff' },
+
+  // Audio toggle in header
+  chatHeaderRight:      { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  audioToggleBtn:       { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  audioToggleIcon:      { fontSize: 14, color: '#4b5563' },
+  audioToggleIconOn:    { color: '#6366f1' },
+  audioToggleTrack:     { width: 36, height: 20, borderRadius: 10, backgroundColor: '#374151', justifyContent: 'center', padding: 2 },
+  audioToggleTrackOn:   { backgroundColor: '#6366f1' },
+  audioToggleThumb:     { width: 16, height: 16, borderRadius: 8, backgroundColor: '#9ca3af' },
+  audioToggleThumbOn:   { alignSelf: 'flex-end', backgroundColor: '#fff' },
+
+  // Speaker button on bot messages
+  msgBotGroup:   { maxWidth: '85%', gap: 4 },
+  speakBtn:      { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(99,102,241,0.12)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.2)' },
+  speakBtnActive: { backgroundColor: 'rgba(239,68,68,0.12)', borderColor: 'rgba(239,68,68,0.3)' },
+  speakBtnTxt:   { fontSize: 13 },
 
   // ── Quiz modal ────────────────────────────────────────────────────────────
   quizResultContent: { padding: 24, gap: 20, paddingBottom: 40 },
