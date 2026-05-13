@@ -31,3 +31,5 @@ Thumbs.db
 .env.development
 .env.production
 *.yml
+*.yaml
+!docker-compose.yml
