@@ -3,11 +3,12 @@ import {
   View, Text, Image, TouchableOpacity, ScrollView, StyleSheet,
   ActivityIndicator, LayoutAnimation, Platform, UIManager,
   useWindowDimensions, Modal, TextInput, KeyboardAvoidingView,
-  PanResponder, StatusBar,
+  PanResponder, StatusBar, Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio, AVPlaybackStatus } from 'expo-av';
 import * as Speech from 'expo-speech';
+import Svg, { Circle, Ellipse, Path } from 'react-native-svg';
 import { fetchSlides, resolveMediaUrl, askFaq, transcribeAudio, fetchQuiz, submitQuizText, fetchFaqHints, updateProgress, markTrainingComplete, QuizQuestion, EvalResult, Slide, Training } from '../api';
 
 if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
@@ -42,6 +43,127 @@ function CompressIcon({ size, color }: { size: number; color: string }) {
       <View style={[c, { top: off, right: off, borderTopWidth: t, borderRightWidth: t }]} />
       <View style={[c, { bottom: off, left: off, borderBottomWidth: t, borderLeftWidth: t }]} />
       <View style={[c, { bottom: off, right: off, borderBottomWidth: t, borderRightWidth: t }]} />
+    </View>
+  );
+}
+
+const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
+
+function CoachAvatar({ speaking }: { speaking: boolean }) {
+  const mouthRy  = useRef(new Animated.Value(1.5)).current;
+  const animRef  = useRef<Animated.CompositeAnimation | null>(null);
+  const glowAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    animRef.current?.stop();
+    if (speaking) {
+      animRef.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(mouthRy, { toValue: 8,   duration: 190, useNativeDriver: false }),
+          Animated.timing(mouthRy, { toValue: 2.5, duration: 170, useNativeDriver: false }),
+          Animated.timing(mouthRy, { toValue: 6.5, duration: 150, useNativeDriver: false }),
+          Animated.timing(mouthRy, { toValue: 1.5, duration: 180, useNativeDriver: false }),
+        ])
+      );
+      animRef.current.start();
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(glowAnim, { toValue: 1,   duration: 800, useNativeDriver: true }),
+          Animated.timing(glowAnim, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+        ])
+      ).start();
+    } else {
+      Animated.timing(mouthRy,  { toValue: 1.5, duration: 200, useNativeDriver: false }).start();
+      Animated.timing(glowAnim, { toValue: 0,   duration: 300, useNativeDriver: true  }).start();
+    }
+    return () => { animRef.current?.stop(); };
+  }, [speaking]);
+
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.65] });
+
+  return (
+    <View style={s.avatarWrap}>
+      <Animated.View style={[s.avatarGlow, { opacity: glowOpacity }]} />
+      <View style={[s.avatarRing, speaking && s.avatarRingActive]}>
+        <Svg width={70} height={70} viewBox="0 0 100 100">
+
+          {/* ── Samsung collar / shirt ── */}
+          <Path d="M 18 100 L 36 86 L 50 93 L 64 86 L 82 100 Z" fill="#1428A0" />
+          <Path d="M 36 86 L 50 79 L 64 86 L 50 93 Z" fill="#e8eeff" />
+
+          {/* ── Neck ── */}
+          <Ellipse cx="50" cy="83" rx="8" ry="6" fill="#F5C5A3" />
+
+          {/* ── Ears ── */}
+          <Ellipse cx="21" cy="52" rx="5"   ry="7"   fill="#F5C5A3" />
+          <Ellipse cx="22" cy="52" rx="3"   ry="4.5" fill="#e8a882" />
+          <Ellipse cx="79" cy="52" rx="5"   ry="7"   fill="#F5C5A3" />
+          <Ellipse cx="78" cy="52" rx="3"   ry="4.5" fill="#e8a882" />
+
+          {/* ── Hair – back volume ── */}
+          <Ellipse cx="50" cy="25" rx="30" ry="22" fill="#C8995A" />
+
+          {/* ── Face ── */}
+          <Ellipse cx="50" cy="51" rx="27" ry="32" fill="#F5C5A3" />
+
+          {/* ── Hair – front / fringe (overlays forehead) ── */}
+          <Path d="M 22 34 Q 24 3 50 2 Q 76 3 78 34 Q 66 9 50 8 Q 34 9 22 34 Z" fill="#C8995A" />
+          {/* highlight streak */}
+          <Path d="M 43 3 Q 50 2 57 4 Q 53 9 50 8 Q 47 9 43 3 Z" fill="#DFBA70" />
+
+          {/* ── Eyebrows ── */}
+          <Path d="M 27 36 Q 33 32 40 34" stroke="#8B6535" strokeWidth="2.2" strokeLinecap="round" fill="none" />
+          <Path d="M 60 34 Q 67 32 73 36" stroke="#8B6535" strokeWidth="2.2" strokeLinecap="round" fill="none" />
+
+          {/* ── Left eye ── */}
+          <Path d="M 26 45 Q 33 38 40 40 Q 44 41 43 45 Q 40 50 33 49 Q 26 48 26 45 Z" fill="#fafaf8" />
+          <Circle cx="33" cy="44" r="5.5" fill="#1A5ED8" />
+          <Circle cx="33" cy="44" r="3"   fill="#08081A" />
+          <Circle cx="35" cy="42" r="1.5" fill="white" />
+          <Circle cx="32" cy="46" r="0.7" fill="rgba(255,255,255,0.55)" />
+          <Path d="M 26 45 Q 33 38 40 40 Q 44 41 43 45" stroke="#1e0808" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+          {/* left lashes */}
+          <Path d="M 27 46 L 25 43" stroke="#1e0808" strokeWidth="1.1" strokeLinecap="round" />
+          <Path d="M 30 41 L 29 38" stroke="#1e0808" strokeWidth="1.1" strokeLinecap="round" />
+          <Path d="M 34 39 L 34 36" stroke="#1e0808" strokeWidth="1.1" strokeLinecap="round" />
+          <Path d="M 38 40 L 39 37" stroke="#1e0808" strokeWidth="1.1" strokeLinecap="round" />
+          <Path d="M 42 43 L 43 40" stroke="#1e0808" strokeWidth="1.1" strokeLinecap="round" />
+
+          {/* ── Right eye ── */}
+          <Path d="M 57 45 Q 60 38 67 40 Q 72 41 74 45 Q 74 48 67 49 Q 60 50 57 45 Z" fill="#fafaf8" />
+          <Circle cx="67" cy="44" r="5.5" fill="#1A5ED8" />
+          <Circle cx="67" cy="44" r="3"   fill="#08081A" />
+          <Circle cx="69" cy="42" r="1.5" fill="white" />
+          <Circle cx="66" cy="46" r="0.7" fill="rgba(255,255,255,0.55)" />
+          <Path d="M 57 45 Q 60 38 67 40 Q 72 41 74 45" stroke="#1e0808" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+          {/* right lashes */}
+          <Path d="M 57 46 L 55 43" stroke="#1e0808" strokeWidth="1.1" strokeLinecap="round" />
+          <Path d="M 60 41 L 59 38" stroke="#1e0808" strokeWidth="1.1" strokeLinecap="round" />
+          <Path d="M 64 39 L 64 36" stroke="#1e0808" strokeWidth="1.1" strokeLinecap="round" />
+          <Path d="M 68 40 L 69 37" stroke="#1e0808" strokeWidth="1.1" strokeLinecap="round" />
+          <Path d="M 72 43 L 73 40" stroke="#1e0808" strokeWidth="1.1" strokeLinecap="round" />
+
+          {/* ── Nose ── */}
+          <Path d="M 47 55 Q 45 62 45 64 Q 47 66 50 65 Q 53 66 55 64 Q 55 62 53 55"
+            fill="none" stroke="#d4956a" strokeWidth="0.9" strokeLinecap="round" />
+          <Circle cx="47" cy="64" r="2"   fill="#d4956a" />
+          <Circle cx="53" cy="64" r="2"   fill="#d4956a" />
+
+          {/* ── Cheek blush ── */}
+          <Ellipse cx="21" cy="59" rx="7" ry="4" fill="#FF8C78" fillOpacity={0.18} />
+          <Ellipse cx="79" cy="59" rx="7" ry="4" fill="#FF8C78" fillOpacity={0.18} />
+
+          {/* ── Mouth (layered: cavity → teeth → upper lip → lip line) ── */}
+          <AnimatedEllipse cx="50" cy="75" rx="10" ry={mouthRy} fill="#3d0f18" />
+          <Ellipse cx="50" cy="72" rx="8.5" ry="3" fill="#f5f0ec" />
+          <Path d="M 40 72 Q 44 67.5 50 68.5 Q 56 67.5 60 72 Q 56 73.5 50 73 Q 44 73.5 40 72 Z" fill="#cc5070" />
+          <Path d="M 40 72 Q 50 75.5 60 72" fill="none" stroke="#aa3555" strokeWidth="0.9" />
+
+        </Svg>
+      </View>
+      <Text style={[s.avatarLabel, speaking && s.avatarLabelActive]}>
+        {speaking ? 'Speaking…' : 'AI Coach'}
+      </Text>
     </View>
   );
 }
@@ -857,6 +979,9 @@ export default function TrainingPlayerScreen({ training, assignmentId, isReview 
             </View>
           </View>
 
+          {/* Avatar */}
+          <CoachAvatar speaking={speakingMsgId !== null} />
+
           {/* Messages */}
           <ScrollView ref={chatScrollRef} style={s.chatMessages} contentContainerStyle={s.chatMessagesContent}
             onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}>
@@ -1425,6 +1550,14 @@ const s = StyleSheet.create({
   sendBtn:       { width: 44, height: 44, borderRadius: 22, backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
   sendBtnOff:    { backgroundColor: '#374151' },
   sendBtnTxt:    { fontSize: 16, color: '#fff' },
+
+  // Coach avatar
+  avatarWrap:        { alignItems: 'center', paddingVertical: 10, gap: 5, borderBottomWidth: 1, borderBottomColor: '#1a2235' },
+  avatarGlow:        { position: 'absolute', width: 92, height: 92, borderRadius: 46, backgroundColor: '#1428A0', top: 4 },
+  avatarRing:        { width: 80, height: 80, borderRadius: 40, backgroundColor: '#0c1829', borderWidth: 2.5, borderColor: '#1e3a6a', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarRingActive:  { borderColor: '#1428A0' },
+  avatarLabel:       { fontSize: 11, fontWeight: '600', color: '#4b5563', letterSpacing: 0.4 },
+  avatarLabelActive: { color: '#93c5fd' },
 
   // Audio toggle in header
   chatHeaderRight:      { flexDirection: 'row', alignItems: 'center', gap: 10 },
