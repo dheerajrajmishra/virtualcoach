@@ -10,6 +10,9 @@ import { Audio, AVPlaybackStatus } from 'expo-av';
 import * as Speech from 'expo-speech';
 import Svg, { Circle, Ellipse, Path } from 'react-native-svg';
 import { fetchSlides, resolveMediaUrl, askFaq, transcribeAudio, fetchQuiz, submitQuizText, fetchFaqHints, updateProgress, markTrainingComplete, QuizQuestion, EvalResult, Slide, Training } from '../api';
+import { CoachAvatarRenderer, CoachAvatarRendererHandle } from '../components/CoachAvatarRenderer';
+import { AvatarModeToggle } from '../components/AvatarModeToggle';
+import { useAvatarMode } from '../hooks/useAvatarMode';
 
 if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
 
@@ -159,6 +162,11 @@ export default function TrainingPlayerScreen({ training, assignmentId, isReview 
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const [faqAudioEnabled, setFaqAudioEnabled] = useState(false);
   const recordingRef                      = useRef<Audio.Recording | null>(null);
+
+  // Avatar mode (Animated GIF + native TTS  ↔  Real face + ElevenLabs lip sync)
+  const { mode: avatarMode, setMode: setAvatarMode } = useAvatarMode();
+  const avatarRendererRef = useRef<CoachAvatarRendererHandle | null>(null);
+
   const [chatMessages, setChatMessages]   = useState<ChatMessage[]>([{
     id: '0', role: 'assistant',
     text: `Hi! I'm your AI Coach for "${training.name}". Ask me anything about this training!`,
@@ -454,19 +462,18 @@ export default function TrainingPlayerScreen({ training, assignmentId, isReview 
   };
 
   function speakText(msgId: string, text: string) {
-    Speech.stop();
     setSpeakingMsgId(msgId);
-    Speech.speak(text, {
-      language: LOCALE_TO_LANG[locale] ?? 'en-US',
-      onDone:    () => setSpeakingMsgId(null),
-      onError:   () => setSpeakingMsgId(null),
-      onStopped: () => setSpeakingMsgId(null),
-    });
+    // Route through the renderer – mode-aware:
+    //   ANIMATED → expo-speech (native TTS)
+    //   REAL     → ElevenLabs + lip sync
+    avatarRendererRef.current
+      ?.speak(text, LOCALE_TO_LANG[locale] ?? 'en-US')
+      .catch(() => setSpeakingMsgId(null));
   }
 
   function toggleSpeak(msg: ChatMessage) {
     if (speakingMsgId === msg.id) {
-      Speech.stop();
+      avatarRendererRef.current?.stop().catch(() => {});
       setSpeakingMsgId(null);
     } else {
       speakText(msg.id, msg.text);
@@ -834,7 +841,7 @@ export default function TrainingPlayerScreen({ training, assignmentId, isReview 
           </View>
 
           {/* FAQ Button (Floating Avatar) */}
-          <CoachAvatar
+          <CoachAvatarRenderer
             speaking={isPlaying}
             floating={true}
             onPress={() => { openChat(); showFsControlsAndScheduleHide(); }}
@@ -878,7 +885,7 @@ export default function TrainingPlayerScreen({ training, assignmentId, isReview 
 
 
   const fab = (
-    <CoachAvatar
+    <CoachAvatarRenderer
       speaking={isPlaying}
       floating={true}
       onPress={openChat}
@@ -914,8 +921,22 @@ export default function TrainingPlayerScreen({ training, assignmentId, isReview 
             </View>
           </View>
 
-          {/* Avatar */}
-          <CoachAvatar speaking={speakingMsgId !== null} />
+          {/* Avatar mode toggle – locked while speaking */}
+          <View style={{ alignItems: 'center', paddingVertical: 6 }}>
+            <AvatarModeToggle
+              mode={avatarMode}
+              onChange={setAvatarMode}
+              disabled={speakingMsgId !== null}
+              compact
+            />
+          </View>
+
+          {/* Avatar (mode-aware) */}
+          <CoachAvatarRenderer
+            ref={avatarRendererRef}
+            speaking={speakingMsgId !== null}
+            onSpeakEnd={() => setSpeakingMsgId(null)}
+          />
 
           {/* Messages */}
           <ScrollView ref={chatScrollRef} style={s.chatMessages} contentContainerStyle={s.chatMessagesContent}
