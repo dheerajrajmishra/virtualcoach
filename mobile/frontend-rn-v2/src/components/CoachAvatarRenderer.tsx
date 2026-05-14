@@ -24,8 +24,8 @@ interface Props {
   style?: ViewStyle;
   /** Portrait shown in REAL mode (defaults to a placeholder face). */
   portraitSource?: any;
-  /** Voice override for REAL mode. */
-  voiceId?: string;
+  /** Locale for server-side voice selection in REAL mode (e.g. "en", "hi"). */
+  locale?: string;
   /** Called by RealCoachAvatar when ElevenLabs is unavailable. */
   onRealFallback?: () => void;
   onSpeakEnd?: () => void;
@@ -40,7 +40,7 @@ interface Props {
  */
 export const CoachAvatarRenderer = forwardRef<CoachAvatarRendererHandle, Props>(
   function CoachAvatarRenderer(
-    { speaking, floating, onPress, style, portraitSource, voiceId, onRealFallback, onSpeakEnd },
+    { speaking, floating, onPress, style, portraitSource, locale, onRealFallback, onSpeakEnd },
     ref,
   ) {
     const { mode, setMode } = useAvatarMode();
@@ -78,7 +78,7 @@ export const CoachAvatarRenderer = forwardRef<CoachAvatarRendererHandle, Props>(
           onPress={onPress}
           style={style}
           portraitSource={portraitSource}
-          voiceId={voiceId}
+          locale={locale}
           onSpeakEnd={onSpeakEnd}
           onError={(err) => {
             console.warn("[CoachAvatarRenderer] Real mode failed – falling back to animated:", err);

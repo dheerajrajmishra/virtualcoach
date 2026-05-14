@@ -1,7 +1,9 @@
 package com.pitchperfect.mobile.controller;
 
+import com.pitchperfect.mobile.dto.TtsSynthesisResponse;
 import com.pitchperfect.mobile.model.LearnerProgress;
 import com.pitchperfect.mobile.model.Quiz;
+import com.pitchperfect.mobile.service.ElevenLabsTtsService;
 import com.pitchperfect.mobile.service.FaqCacheService;
 import com.pitchperfect.mobile.repository.QuizRepository;
 import com.pitchperfect.mobile.service.ProgressService;
@@ -11,8 +13,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import org.springframework.web.multipart.MultipartFile;
-
-import com.pitchperfect.mobile.model.LearnerProgress;
 
 import java.util.List;
 import java.util.Map;
@@ -29,6 +29,7 @@ public class LearnerController {
     private final FaqCacheService faqCacheService;
     private final QuizRepository quizRepository;
     private final com.pitchperfect.mobile.service.ElevenLabsSpeechService elevenLabsSpeechService;
+    private final ElevenLabsTtsService elevenLabsTtsService;
 
     @GetMapping("/progress/{trainingId}")
     public ResponseEntity<LearnerProgress> getProgress(
@@ -125,5 +126,13 @@ public class LearnerController {
             @RequestParam(defaultValue = "en") String locale) throws java.io.IOException {
         String text = elevenLabsSpeechService.transcribe(audio.getBytes(), audio.getContentType(), locale);
         return ResponseEntity.ok(Map.of("text", text));
+    }
+
+    @PostMapping("/synthesize")
+    public ResponseEntity<TtsSynthesisResponse> synthesizeSpeech(
+            @RequestBody Map<String, String> body) throws java.io.IOException {
+        String text = body.getOrDefault("text", "");
+        String locale = body.getOrDefault("locale", "en");
+        return ResponseEntity.ok(elevenLabsTtsService.synthesize(text, locale));
     }
 }

@@ -1,4 +1,5 @@
-import { ELEVENLABS_CONFIG, charToViseme, type Viseme } from "../constants/avatarConfig";
+import { charToViseme, type Viseme } from "../constants/avatarConfig";
+import { MOBILE_BASE } from "../api";
 
 /** Per-character timing aligned to the audio timeline. */
 export interface VisemeFrame {
@@ -27,86 +28,55 @@ export class ElevenLabsError extends Error {
 }
 
 /**
- * Synthesize speech via ElevenLabs and return a `data:` audio URI plus a
- * viseme track aligned to that audio. Uses the `with-timestamps` endpoint
- * so we get character-level alignment in the same response.
- *
- * Why `data:` URI: expo-av will play base64 mp3 directly from a data URI
- * without us pulling in expo-file-system to write a temp file. For larger
- * payloads (>500KB) switch to writing to FileSystem.cacheDirectory.
+ * Synthesize speech via the mobile backend (which proxies to ElevenLabs).
+ * The API key never leaves the server — the frontend only sends text + locale.
  */
 export async function synthesizeWithVisemes(
   text: string,
-  options: { voiceId?: string; signal?: AbortSignal } = {},
+  options: { voiceId?: string; locale?: string; signal?: AbortSignal } = {},
 ): Promise<ElevenLabsResult> {
-  const { apiKey, voiceId: defaultVoice, modelId, endpoint } = ELEVENLABS_CONFIG;
+  const locale = options.locale ?? "en";
 
-  if (!apiKey) {
-    throw new ElevenLabsError(
-      "ElevenLabs API key missing. Set EXPO_PUBLIC_ELEVENLABS_API_KEY in .env.",
-    );
-  }
-
-  const voiceId = options.voiceId ?? defaultVoice;
-  const url = `${endpoint}/${voiceId}/with-timestamps`;
-
-  const res = await fetch(url, {
+  const res = await fetch(`${MOBILE_BASE}/learner/synthesize`, {
     method: "POST",
     signal: options.signal,
     headers: {
-      "xi-api-key": apiKey,
       "Content-Type": "application/json",
-      Accept: "application/json",
+      "X-User-Id": "learner-uid",
     },
-    body: JSON.stringify({
-      text,
-      model_id: modelId,
-      voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-    }),
+    body: JSON.stringify({ text, locale }),
   });
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new ElevenLabsError(
-      `ElevenLabs request failed (${res.status}): ${body || res.statusText}`,
+      `Speech synthesis failed (${res.status}): ${body || res.statusText}`,
       res.status,
     );
   }
 
   const data = (await res.json()) as {
-    audio_base64: string;
-    alignment?: AlignmentBlock;
-    normalized_alignment?: AlignmentBlock;
+    audioBase64: string;
+    characters: string[];
+    characterStartTimes: number[];
+    characterEndTimes: number[];
+    duration: number;
   };
 
-  const audioUri = `data:audio/mpeg;base64,${data.audio_base64}`;
+  const audioUri = `data:audio/mpeg;base64,${data.audioBase64}`;
 
-  const alignment = data.normalized_alignment ?? data.alignment;
   const visemes: VisemeFrame[] = [];
-  if (alignment) {
-    const {
-      characters,
-      character_start_times_seconds,
-      character_end_times_seconds,
-    } = alignment;
-    for (let i = 0; i < characters.length; i++) {
-      visemes.push({
-        char: characters[i],
-        start: character_start_times_seconds[i],
-        end: character_end_times_seconds[i],
-        viseme: charToViseme(characters[i]),
-      });
-    }
+  const { characters = [], characterStartTimes = [], characterEndTimes = [] } = data;
+  for (let i = 0; i < characters.length; i++) {
+    visemes.push({
+      char: characters[i],
+      start: characterStartTimes[i],
+      end: characterEndTimes[i],
+      viseme: charToViseme(characters[i]),
+    });
   }
 
-  const duration = visemes.length > 0 ? visemes[visemes.length - 1].end : 0;
-  return { audioUri, visemes, duration };
-}
-
-interface AlignmentBlock {
-  characters: string[];
-  character_start_times_seconds: number[];
-  character_end_times_seconds: number[];
+  return { audioUri, visemes, duration: data.duration };
 }
 
 /** Pick the active viseme for a given audio currentTime (seconds). */

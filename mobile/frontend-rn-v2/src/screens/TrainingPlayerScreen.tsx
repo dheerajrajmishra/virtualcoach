@@ -935,6 +935,7 @@ export default function TrainingPlayerScreen({ training, assignmentId, isReview 
           <CoachAvatarRenderer
             ref={avatarRendererRef}
             speaking={speakingMsgId !== null}
+            locale={locale}
             onSpeakEnd={() => setSpeakingMsgId(null)}
           />
 
