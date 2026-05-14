@@ -2,11 +2,11 @@ import { Platform } from 'react-native';
 
 const CMS_HOST = Platform.OS === 'web'
   ? 'http://localhost:8080'
-  : 'http://10.224.203.145:8080';
+  : 'http://10.192.223.145:8080';
 
 const MOBILE_HOST = Platform.OS === 'web'
   ? 'http://localhost:8081'
-  : 'http://10.224.203.145:8081';
+  : 'http://10.192.223.145:8081';
 
 export const BASE = `${CMS_HOST}/api`;
 export const MOBILE_BASE = `${MOBILE_HOST}/api`;

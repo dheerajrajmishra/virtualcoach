@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>VirtualCoach — Screen Recording Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0f1a;
+  --surface:#111827;
+  --surface2:#1a2236;
+  --border:rgba(255,255,255,.08);
+  --p400:#818cf8;--p500:#6366f1;--p600:#4f46e5;
+  --sky:#38bdf8;--emerald:#34d399;--amber:#fbbf24;--rose:#f87171;
+  --text:#e2e8f0;--muted:rgba(255,255,255,.45);
+}
+html,body{height:100%;font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overflow:hidden}
+
+/* ── Layout ── */
+#app{display:flex;height:100vh}
+
+/* Left sidebar — step navigator */
+#nav{
+  width:280px;flex-shrink:0;
+  background:var(--surface);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+#nav-header{
+  padding:20px 20px 16px;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+#nav-header h1{font-size:15px;font-weight:800;color:#fff;letter-spacing:-.01em}
+#nav-header p{font-size:11px;color:var(--muted);margin-top:3px}
+#step-list{overflow-y:auto;flex:1;padding:10px 0}
+
+.section-label{
+  font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);padding:14px 20px 6px;
+}
+
+.step-item{
+  display:flex;align-items:center;gap:12px;
+  padding:9px 20px;cursor:pointer;
+  transition:background .15s;
+  border-left:3px solid transparent;
+}
+.step-item:hover{background:rgba(255,255,255,.04)}
+.step-item.active{
+  background:rgba(99,102,241,.1);
+  border-left-color:var(--p400);
+}
+.step-item.done .step-num{
+  background:var(--emerald);color:#065f46;
+}
+.step-num{
+  width:24px;height:24px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:700;flex-shrink:0;
+  background:rgba(255,255,255,.08);color:var(--muted);
+  transition:all .2s;
+}
+.step-item.active .step-num{background:var(--p500);color:#fff}
+.step-title{font-size:12px;font-weight:500;color:rgba(255,255,255,.65);line-height:1.3}
+.step-item.active .step-title{color:#fff}
+.step-item.done .step-title{color:var(--emerald)}
+
+#nav-footer{
+  padding:14px 20px;
+  border-top:1px solid var(--border);
+  flex-shrink:0;
+}
+#progress-bar-wrap{background:rgba(255,255,255,.07);border-radius:99px;height:5px;overflow:hidden}
+#progress-bar{height:100%;background:linear-gradient(90deg,var(--p500),#7c3aed);transition:width .4s;width:0%}
+#progress-text{font-size:10px;color:var(--muted);margin-top:7px;text-align:center}
+
+/* Main panel */
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+/* Top bar */
+#topbar{
+  height:52px;flex-shrink:0;
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 28px;gap:16px;
+}
+#topbar .part-badge{
+  display:flex;align-items:center;gap:8px;
+  font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+}
+.badge-cms{color:var(--p400);background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.25);border-radius:6px;padding:3px 10px}
+.badge-mobile{color:var(--sky);background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.2);border-radius:6px;padding:3px 10px}
+.badge-e2e{color:var(--emerald);background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.2);border-radius:6px;padding:3px 10px}
+
+#topbar .step-counter{font-size:12px;color:var(--muted);font-weight:500}
+.nav-btns{display:flex;gap:8px}
+.nav-btns button{
+  background:rgba(255,255,255,.06);border:1px solid var(--border);
+  border-radius:8px;color:rgba(255,255,255,.7);
+  font-size:12px;font-weight:600;padding:6px 14px;cursor:pointer;
+  font-family:'Inter',sans-serif;transition:all .15s;
+}
+.nav-btns button:hover{background:rgba(255,255,255,.12);color:#fff}
+.nav-btns button.primary{background:var(--p600);border-color:var(--p500);color:#fff}
+.nav-btns button.primary:hover{background:var(--p500)}
+.nav-btns button:disabled{opacity:.3;pointer-events:none}
+
+/* Step content */
+#content{flex:1;overflow-y:auto;padding:32px 36px}
+
+.step-header{margin-bottom:28px}
+.step-header .tag{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  padding:4px 12px;border-radius:99px;margin-bottom:12px;
+}
+.tag-cms{background:rgba(99,102,241,.15);color:var(--p400);border:1px solid rgba(99,102,241,.25)}
+.tag-mobile{background:rgba(56,189,248,.12);color:var(--sky);border:1px solid rgba(56,189,248,.2)}
+.tag-e2e{background:rgba(52,211,153,.12);color:var(--emerald);border:1px solid rgba(52,211,153,.2)}
+.tag-start{background:rgba(251,191,36,.12);color:var(--amber);border:1px solid rgba(251,191,36,.2)}
+
+.step-header h2{font-size:clamp(1.4rem,2.5vw,2rem);font-weight:800;color:#fff;letter-spacing:-.03em;line-height:1.15}
+.step-header p{font-size:14px;color:var(--muted);margin-top:10px;line-height:1.7;max-width:680px}
+
+/* URL bar */
+.url-bar{
+  display:flex;align-items:center;gap:10px;
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:10px;padding:10px 16px;margin-bottom:24px;
+}
+.url-bar .dot-r{width:9px;height:9px;border-radius:50%;background:#ef4444;flex-shrink:0}
+.url-bar .dot-y{width:9px;height:9px;border-radius:50%;background:#f59e0b;flex-shrink:0}
+.url-bar .dot-g{width:9px;height:9px;border-radius:50%;background:#22c55e;flex-shrink:0}
+.url-text{
+  flex:1;font-size:12px;color:rgba(255,255,255,.5);
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);
+  border-radius:6px;padding:5px 12px;font-family:monospace;
+}
+
+/* Action cards */
+.actions{display:flex;flex-direction:column;gap:10px;margin-bottom:24px}
+.action-card{
+  display:flex;align-items:flex-start;gap:14px;
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:12px;padding:16px 18px;
+  transition:border-color .15s;
+}
+.action-card:hover{border-color:rgba(255,255,255,.15)}
+.action-num{
+  width:26px;height:26px;border-radius:8px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:800;margin-top:1px;
+}
+.action-num-cms{background:rgba(99,102,241,.2);color:var(--p400)}
+.action-num-mobile{background:rgba(56,189,248,.15);color:var(--sky)}
+.action-body h4{font-size:13px;font-weight:700;color:#fff;margin-bottom:4px}
+.action-body p{font-size:12px;color:rgba(255,255,255,.55);line-height:1.6}
+.action-body .click{
+  display:inline-flex;align-items:center;gap:5px;
+  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);
+  border-radius:6px;padding:2px 9px;font-size:11px;font-weight:600;
+  color:rgba(255,255,255,.7);margin-top:7px;
+}
+
+/* Script / narration box */
+.script-box{
+  background:linear-gradient(135deg,rgba(99,102,241,.06) 0%,rgba(124,58,237,.04) 100%);
+  border:1px solid rgba(99,102,241,.2);
+  border-radius:12px;padding:18px 20px;margin-bottom:24px;
+}
+.script-box .label{
+  font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--p400);margin-bottom:10px;display:flex;align-items:center;gap:6px;
+}
+.script-box p{font-size:13px;color:rgba(255,255,255,.75);line-height:1.75;font-style:italic}
+
+/* Key points */
+.key-points{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:12px;margin-bottom:24px;
+}
+.kp{
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:10px;padding:14px 16px;
+}
+.kp .kp-icon{font-size:18px;margin-bottom:8px}
+.kp h4{font-size:12px;font-weight:700;color:#fff;margin-bottom:4px}
+.kp p{font-size:11px;color:var(--muted);line-height:1.55}
+
+/* Checklist */
+.checklist{display:flex;flex-direction:column;gap:7px;margin-bottom:24px}
+.check-item{
+  display:flex;align-items:center;gap:10px;
+  font-size:13px;color:rgba(255,255,255,.7);
+  cursor:pointer;padding:6px 0;
+}
+.check-item input[type=checkbox]{
+  width:16px;height:16px;accent-color:var(--p500);cursor:pointer;flex-shrink:0;
+}
+.check-item.checked{color:var(--emerald);text-decoration:line-through;opacity:.7}
+
+/* Timing badge */
+.timing{
+  display:inline-flex;align-items:center;gap:5px;
+  background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);
+  border-radius:6px;padding:4px 11px;font-size:11px;font-weight:600;
+  color:var(--amber);margin-bottom:20px;
+}
+
+/* Divider */
+.divider{height:1px;background:var(--border);margin:24px 0}
+
+/* Highlight box */
+.highlight{
+  background:rgba(52,211,153,.06);border:1px solid rgba(52,211,153,.18);
+  border-radius:10px;padding:14px 16px;margin-bottom:20px;
+}
+.highlight p{font-size:13px;color:rgba(255,255,255,.7);line-height:1.6}
+.highlight strong{color:var(--emerald)}
+
+/* Start / done screens */
+.center-content{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;min-height:60vh;gap:20px;
+}
+.center-content h2{font-size:2.5rem;font-weight:900;color:#fff;letter-spacing:-.04em}
+.center-content .sub{font-size:15px;color:var(--muted);max-width:520px;line-height:1.7}
+.big-num{
+  font-size:4rem;font-weight:900;
+  background:linear-gradient(130deg,var(--p400),#a78bfa,var(--sky));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  line-height:1;
+}
+
+.checklist-group{text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:20px 24px;width:100%;max-width:500px}
+.checklist-group h4{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+.prereq{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;color:rgba(255,255,255,.75)}
+.prereq:last-child{border-bottom:none}
+.prereq .prereq-icon{font-size:16px;flex-shrink:0}
+.prereq code{font-size:11px;background:rgba(255,255,255,.07);border-radius:5px;padding:2px 7px;color:var(--sky);font-family:monospace}
+
+/* keyboard shortcut */
+kbd{
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);
+  border-radius:5px;padding:2px 7px;font-size:11px;font-family:monospace;
+  color:rgba(255,255,255,.7);
+}
+
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.live-dot{
+  width:8px;height:8px;border-radius:50%;background:#22c55e;
+  animation:pulse 1.8s infinite;display:inline-block;
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ══════════════════════════════════════
+     SIDEBAR
+══════════════════════════════════════ -->
+<div id="nav">
+  <div id="nav-header">
+    <h1>VirtualCoach</h1>
+    <p>Screen Recording Walkthrough</p>
+  </div>
+  <div id="step-list">
+    <div class="section-label">Setup</div>
+    <div class="step-item" data-idx="0">
+      <div class="step-num">●</div>
+      <div class="step-title">Before You Record</div>
+    </div>
+
+    <div class="section-label">Part 1 — CMS Portal</div>
+    <div class="step-item" data-idx="1">
+      <div class="step-num">1</div>
+      <div class="step-title">Home — Upload Training</div>
+    </div>
+    <div class="step-item" data-idx="2">
+      <div class="step-num">2</div>
+      <div class="step-title">Ingestion Pipeline Monitor</div>
+    </div>
+    <div class="step-item" data-idx="3">
+      <div class="step-num">3</div>
+      <div class="step-title">Trainings Management</div>
+    </div>
+    <div class="step-item" data-idx="4">
+      <div class="step-num">4</div>
+      <div class="step-title">Dashboard — Overview</div>
+    </div>
+    <div class="step-item" data-idx="5">
+      <div class="step-num">5</div>
+      <div class="step-title">Dashboard — Missed FAQs</div>
+    </div>
+    <div class="step-item" data-idx="6">
+      <div class="step-num">6</div>
+      <div class="step-title">Dashboard — Quiz Results</div>
+    </div>
+    <div class="step-item" data-idx="7">
+      <div class="step-num">7</div>
+      <div class="step-title">Assignments</div>
+    </div>
+
+    <div class="section-label">Part 2 — Mobile App</div>
+    <div class="step-item" data-idx="8">
+      <div class="step-num">8</div>
+      <div class="step-title">Training List Screen</div>
+    </div>
+    <div class="step-item" data-idx="9">
+      <div class="step-num">9</div>
+      <div class="step-title">Open Training — Slide Player</div>
+    </div>
+    <div class="step-item" data-idx="10">
+      <div class="step-num">10</div>
+      <div class="step-title">Audio Playback &amp; Language Switch</div>
+    </div>
+    <div class="step-item" data-idx="11">
+      <div class="step-num">11</div>
+      <div class="step-title">AI FAQ Chatbot</div>
+    </div>
+    <div class="step-item" data-idx="12">
+      <div class="step-num">12</div>
+      <div class="step-title">Quiz — Submit &amp; Evaluate</div>
+    </div>
+
+    <div class="section-label">Wrap-up</div>
+    <div class="step-item" data-idx="13">
+      <div class="step-num">★</div>
+      <div class="step-title">Closing Slide / Summary</div>
+    </div>
+  </div>
+  <div id="nav-footer">
+    <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+    <div id="progress-text">0 / 14 steps</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MAIN
+══════════════════════════════════════ -->
+<div id="main">
+  <div id="topbar">
+    <div class="part-badge"><span id="part-badge" class="badge-start">Setup</span></div>
+    <div class="step-counter" id="step-counter">Step 0 of 13</div>
+    <div class="nav-btns">
+      <button id="btn-prev" disabled>← Back</button>
+      <button id="btn-next" class="primary">Start →</button>
+    </div>
+  </div>
+  <div id="content"></div>
+</div>
+
+</div>
+
+<script>
+const STEPS = [
+// ─── 0: SETUP ───────────────────────────────────────────────
+{
+  part:'start',
+  html:`
+<div class="center-content">
+  <div class="big-num">🎬</div>
+  <h2>Before You Record</h2>
+  <p class="sub">Ensure all four services are running and the app has data before you hit record.</p>
+  <div class="checklist-group">
+    <h4>Pre-flight checklist</h4>
+    <div class="prereq"><span class="prereq-icon">🗄️</span><span>SQL Server running on <code>localhost:1433</code></span></div>
+    <div class="prereq"><span class="prereq-icon">⚙️</span><span>CMS Backend started on <code>localhost:8080</code></span></div>
+    <div class="prereq"><span class="prereq-icon">⚙️</span><span>Mobile Backend started on <code>localhost:8081</code></span></div>
+    <div class="prereq"><span class="prereq-icon">🖥️</span><span>CMS Frontend running on <code>localhost:3000</code></span></div>
+    <div class="prereq"><span class="prereq-icon">📱</span><span>Mobile App (Expo) on <code>localhost:8083</code></span></div>
+    <div class="prereq"><span class="prereq-icon">📦</span><span>At least 1 training in PUBLISHED status</span></div>
+    <div class="prereq"><span class="prereq-icon">🎤</span><span>Screen recorder ready (OBS / Xbox Game Bar <kbd>Win+G</kbd>)</span></div>
+    <div class="prereq"><span class="prereq-icon">🌐</span><span>Browser tabs pre-opened: <code>:3000</code> and <code>:8083</code></span></div>
+  </div>
+  <div style="font-size:13px;color:var(--muted);max-width:460px;line-height:1.7">
+    <strong style="color:#fff">Tip:</strong> Run <code style="font-size:11px;background:rgba(255,255,255,.07);border-radius:5px;padding:2px 7px;color:var(--sky)">.\start-all.ps1</code> from the project root to start everything in one shot.
+  </div>
+</div>`
+},
+
+// ─── 1: CMS HOME ────────────────────────────────────────────
+{
+  part:'cms',
+  html:`
+<div class="step-header">
+  <div class="tag tag-cms">CMS Portal · Step 1</div>
+  <h2>Upload &amp; Configure a Training</h2>
+  <p>The content manager's first action — upload a PowerPoint deck and an Excel data sheet, choose languages, and kick off the AI pipeline.</p>
+</div>
+<div class="timing">⏱ ~60 seconds on screen</div>
+<div class="url-bar">
+  <div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
+  <span class="url-text">http://localhost:3000</span>
+</div>
+<div class="actions">
+  <div class="action-card">
+    <div class="action-num action-num-cms">1</div>
+    <div class="action-body">
+      <h4>Show the upload form</h4>
+      <p>Navigate to <strong>localhost:3000</strong>. The home screen is the "Upload Training" form. Let the page settle for 2 seconds before narrating.</p>
+      <span class="click">🖱 Navigate to home</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">2</div>
+    <div class="action-body">
+      <h4>Fill in Training Name, Category, Product</h4>
+      <p>Type realistic values — e.g. <em>"Product Launch Q3 2026"</em>, category <em>"Sales Process"</em>, product <em>"Product A"</em>.</p>
+      <span class="click">⌨️ Type in the three text fields</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">3</div>
+    <div class="action-body">
+      <h4>Drop the PPTX file</h4>
+      <p>Drag a PowerPoint file onto the upload dropzone. The dropzone highlights in purple on hover — pause there for 1 second so viewers notice the drag-and-drop UX.</p>
+      <span class="click">📂 Drag PPTX onto dropzone</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">4</div>
+    <div class="action-body">
+      <h4>Drop the Excel data sheet</h4>
+      <p>Drag the .xlsx file onto the second dropzone. This file contains FAQ question/answer pairs and quiz questions.</p>
+      <span class="click">📊 Drag XLSX onto dropzone</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">5</div>
+    <div class="action-body">
+      <h4>Select languages</h4>
+      <p>Click the locale checkboxes — show at least <strong>EN</strong>, <strong>HI</strong>, and <strong>TA</strong>. Pause to let the audience read the 6 options.</p>
+      <span class="click">🌐 Click EN, HI, TA checkboxes</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">6</div>
+    <div class="action-body">
+      <h4>Click "Start Ingestion Pipeline"</h4>
+      <p>Hit the submit button. You'll be redirected to the Processing page. The pipeline starts asynchronously in the backend.</p>
+      <span class="click">🚀 Click submit button</span>
+    </div>
+  </div>
+</div>
+<div class="script-box">
+  <div class="label">🎙 Narration Script</div>
+  <p>"Content managers start by uploading a PowerPoint deck and an Excel data sheet. They choose the product, category, and which of our six supported languages to generate — here we're selecting English, Hindi, and Tamil. One click kicks off the entire AI synthesis pipeline: slide extraction, FAQ parsing, voice generation, and semantic embedding — fully automated."</p>
+</div>`
+},
+
+// ─── 2: PIPELINE MONITOR ────────────────────────────────────
+{
+  part:'cms',
+  html:`
+<div class="step-header">
+  <div class="tag tag-cms">CMS Portal · Step 2</div>
+  <h2>Ingestion Pipeline Monitor</h2>
+  <p>A live view showing every training moving through five AI synthesis stages in real time.</p>
+</div>
+<div class="timing">⏱ ~45 seconds on screen</div>
+<div class="url-bar">
+  <div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
+  <span class="url-text">http://localhost:3000/processing</span>
+</div>
+<div class="actions">
+  <div class="action-card">
+    <div class="action-num action-num-cms">1</div>
+    <div class="action-body">
+      <h4>Navigate to Processing page</h4>
+      <p>Click <strong>Processing</strong> in the nav bar (or you're redirected here automatically after upload).</p>
+      <span class="click">🖱 Click "Processing" nav item</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">2</div>
+    <div class="action-body">
+      <h4>Point out the pipeline stages</h4>
+      <p>Slowly mouse over each stage card: <strong>Ingesting → Parsing → Translating → Voice Gen → Live</strong>. Each stage has a status badge (green = done, yellow = active, red = failed).</p>
+      <span class="click">🖱 Hover over stage cards</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">3</div>
+    <div class="action-body">
+      <h4>Show a DONE training</h4>
+      <p>If you have an existing training that completed, scroll to it and highlight its green "LIVE" badge and locale audio chips (EN ✓, HI ✓, TA ✓).</p>
+      <span class="click">📜 Scroll to completed training</span>
+    </div>
+  </div>
+</div>
+<div class="key-points">
+  <div class="kp"><div class="kp-icon">📥</div><h4>Ingesting</h4><p>Apache POI extracts slides from the PowerPoint. Images saved to storage.</p></div>
+  <div class="kp"><div class="kp-icon">🔤</div><h4>Parsing</h4><p>Excel rows parsed into FAQ and Quiz entities with unique UUIDs.</p></div>
+  <div class="kp"><div class="kp-icon">🎵</div><h4>Voice Gen</h4><p>TTS audio generated per slide × per locale via AI Audio Engine.</p></div>
+  <div class="kp"><div class="kp-icon">🧠</div><h4>Embedding</h4><p>Semantic embeddings computed for each FAQ for vector similarity search.</p></div>
+</div>
+<div class="script-box">
+  <div class="label">🎙 Narration Script</div>
+  <p>"The processing monitor gives real-time visibility into the pipeline. Each training moves through five stages: slide extraction, content parsing, localisation, AI voice generation, and finally goes live. Failed stages are flagged in red with the error detail visible inline — no log hunting required."</p>
+</div>`
+},
+
+// ─── 3: TRAININGS TABLE ─────────────────────────────────────
+{
+  part:'cms',
+  html:`
+<div class="step-header">
+  <div class="tag tag-cms">CMS Portal · Step 3</div>
+  <h2>Trainings Management</h2>
+  <p>The full content library — every training module with status, locale availability, and quick actions.</p>
+</div>
+<div class="timing">⏱ ~40 seconds on screen</div>
+<div class="url-bar">
+  <div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
+  <span class="url-text">http://localhost:3000/trainings</span>
+</div>
+<div class="actions">
+  <div class="action-card">
+    <div class="action-num action-num-cms">1</div>
+    <div class="action-body">
+      <h4>Show the trainings table</h4>
+      <p>Navigate to <strong>/trainings</strong>. Pause on the table so viewers can read the column headers: Name, Status, Locales, Slides, Created, Actions.</p>
+      <span class="click">🖱 Navigate to /trainings</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">2</div>
+    <div class="action-body">
+      <h4>Highlight a PUBLISHED training</h4>
+      <p>Point out the green <strong>PUBLISHED</strong> badge and the locale flag chips (EN · HI · TA). Hover the row to show the action buttons.</p>
+      <span class="click">🖱 Hover published row</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">3</div>
+    <div class="action-body">
+      <h4>Click "Preview" on a published training</h4>
+      <p>Open the preview so viewers see how slides look from the admin side. Return back after 5 seconds.</p>
+      <span class="click">🖱 Click Preview → return</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">4</div>
+    <div class="action-body">
+      <h4>Click "Assign User" on a training</h4>
+      <p>Open the assign modal. Show the user ID field and deadline picker. You don't need to actually submit — just show the modal then close it.</p>
+      <span class="click">👤 Click Assign User → show modal</span>
+    </div>
+  </div>
+</div>
+<div class="script-box">
+  <div class="label">🎙 Narration Script</div>
+  <p>"The trainings library gives managers a complete view of all modules — their pipeline status, which languages are live, how many slides each has, and quick access to preview, publish, or assign. A PUBLISHED training is immediately available to learners on the mobile app."</p>
+</div>`
+},
+
+// ─── 4: DASHBOARD OVERVIEW ──────────────────────────────────
+{
+  part:'cms',
+  html:`
+<div class="step-header">
+  <div class="tag tag-cms">CMS Portal · Step 4</div>
+  <h2>Dashboard — Overview Tab</h2>
+  <p>Platform health at a glance — training counts, learner activity, FAQ gaps, and AI-generated insights.</p>
+</div>
+<div class="timing">⏱ ~45 seconds on screen</div>
+<div class="url-bar">
+  <div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
+  <span class="url-text">http://localhost:3000/dashboard</span>
+</div>
+<div class="actions">
+  <div class="action-card">
+    <div class="action-num action-num-cms">1</div>
+    <div class="action-body">
+      <h4>Navigate to Dashboard</h4>
+      <p>Click <strong>Dashboard</strong> in the nav bar. You land on the Overview tab by default. Let the stats cards animate in before narrating.</p>
+      <span class="click">🖱 Click Dashboard nav</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">2</div>
+    <div class="action-body">
+      <h4>Read the top KPI cards aloud</h4>
+      <p>Point to each: Total Trainings, Published, Active Assignments, Missed FAQ count, and Avg Quiz Score. Pause on each for 2 seconds.</p>
+      <span class="click">🖱 Slowly pan mouse across KPI cards</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">3</div>
+    <div class="action-body">
+      <h4>Point out the Actionable Insights section</h4>
+      <p>Scroll down to show the insight cards — they call out things like "3 learners haven't started their assignment" or "2 quiz questions have a &lt;50% pass rate".</p>
+      <span class="click">📜 Scroll down slowly</span>
+    </div>
+  </div>
+</div>
+<div class="script-box">
+  <div class="label">🎙 Narration Script</div>
+  <p>"The dashboard gives training managers a real-time pulse on the platform. Here we can see total trainings, how many are published and live on mobile, the number of active learner assignments, and a count of FAQ questions the AI couldn't answer — which we'll look at in a moment."</p>
+</div>`
+},
+
+// ─── 5: MISSED FAQs ─────────────────────────────────────────
+{
+  part:'cms',
+  html:`
+<div class="step-header">
+  <div class="tag tag-cms">CMS Portal · Step 5</div>
+  <h2>Dashboard — Missed FAQs Tab</h2>
+  <p>Every question the AI chatbot couldn't answer is captured here — giving managers a closed feedback loop to improve the training content.</p>
+</div>
+<div class="timing">⏱ ~50 seconds on screen</div>
+<div class="url-bar">
+  <div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
+  <span class="url-text">http://localhost:3000/dashboard → Missed FAQs tab</span>
+</div>
+<div class="actions">
+  <div class="action-card">
+    <div class="action-num action-num-cms">1</div>
+    <div class="action-body">
+      <h4>Click the "Missed FAQs" tab</h4>
+      <p>On the Dashboard, click the <strong>Missed FAQs</strong> tab. The table loads questions that learners asked but the AI couldn't answer.</p>
+      <span class="click">🖱 Click Missed FAQs tab</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">2</div>
+    <div class="action-body">
+      <h4>Point out the columns</h4>
+      <p>Highlight: the learner's question (often in Hindi or other native languages), the slide number, the training it came from, and when it was asked.</p>
+      <span class="click">🖱 Hover over columns slowly</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">3</div>
+    <div class="action-body">
+      <h4>Mark one question as Reviewed</h4>
+      <p>Click the <strong>Mark Reviewed</strong> button on one row. The row should fade/change state to show the action completed.</p>
+      <span class="click">✅ Click Mark Reviewed</span>
+    </div>
+  </div>
+</div>
+<div class="highlight">
+  <p><strong>Management talking point:</strong> This is a continuous improvement loop — questions the AI can't answer today become FAQ entries tomorrow. The content manager exports these, adds them to the Excel sheet, re-uploads, and the pipeline generates new embeddings automatically.</p>
+</div>
+<div class="script-box">
+  <div class="label">🎙 Narration Script</div>
+  <p>"One of the most powerful feedback mechanisms in the platform: every time a learner asks a question the AI chatbot can't answer, that question is logged here with full context — which training, which slide, in which language. Managers review the gaps, add them back to the training data, and re-run the pipeline. The knowledge base continuously improves."</p>
+</div>`
+},
+
+// ─── 6: QUIZ RESULTS ────────────────────────────────────────
+{
+  part:'cms',
+  html:`
+<div class="step-header">
+  <div class="tag tag-cms">CMS Portal · Step 6</div>
+  <h2>Dashboard — Quiz Answers Tab</h2>
+  <p>AI-evaluated quiz results across all learners — score distributions, per-learner breakdowns, and GPT-4o feedback.</p>
+</div>
+<div class="timing">⏱ ~45 seconds on screen</div>
+<div class="url-bar">
+  <div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
+  <span class="url-text">http://localhost:3000/dashboard → Quiz Answers tab</span>
+</div>
+<div class="actions">
+  <div class="action-card">
+    <div class="action-num action-num-cms">1</div>
+    <div class="action-body">
+      <h4>Click the "Quiz Answers" tab</h4>
+      <p>Navigate to the Quiz Answers tab. You'll see a summary of all quiz submissions and their AI-generated scores.</p>
+      <span class="click">🖱 Click Quiz Answers tab</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">2</div>
+    <div class="action-body">
+      <h4>Show the score distribution</h4>
+      <p>Point out the per-training score bars — green for Excellent (≥90%), yellow for Pass (≥60%), red for below threshold. Narrate the average score.</p>
+      <span class="click">🖱 Hover score bars</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">3</div>
+    <div class="action-body">
+      <h4>Expand one learner result</h4>
+      <p>Click a row to show the GPT-4o evaluation detail: the learner's answer, the score, strengths, and areas for improvement — written in natural language.</p>
+      <span class="click">🖱 Click expand on a quiz result row</span>
+    </div>
+  </div>
+</div>
+<div class="key-points">
+  <div class="kp"><div class="kp-icon">🏅</div><h4>Pass threshold</h4><p>≥ 60% to pass, ≥ 90% for Excellent. Configurable per training.</p></div>
+  <div class="kp"><div class="kp-icon">🤖</div><h4>Rubric-based</h4><p>GPT-4o evaluates against a rubric — not keyword matching. Nuanced scoring.</p></div>
+  <div class="kp"><div class="kp-icon">💬</div><h4>Written feedback</h4><p>Each result includes strengths and specific improvement suggestions for the learner.</p></div>
+</div>
+<div class="script-box">
+  <div class="label">🎙 Narration Script</div>
+  <p>"The Quiz Answers tab shows how learners performed on every AI-evaluated quiz. This isn't keyword matching — GPT-4o evaluates each free-text answer against a rubric, scores it out of the maximum, and writes a coaching note. Managers get a clear picture of comprehension without manually reading a single answer."</p>
+</div>`
+},
+
+// ─── 7: ASSIGNMENTS ─────────────────────────────────────────
+{
+  part:'cms',
+  html:`
+<div class="step-header">
+  <div class="tag tag-cms">CMS Portal · Step 7</div>
+  <h2>Assignment Management</h2>
+  <p>Allocate trainings to field reps with deadlines, track completion status across the team.</p>
+</div>
+<div class="timing">⏱ ~40 seconds on screen</div>
+<div class="url-bar">
+  <div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
+  <span class="url-text">http://localhost:3000/assignments</span>
+</div>
+<div class="actions">
+  <div class="action-card">
+    <div class="action-num action-num-cms">1</div>
+    <div class="action-body">
+      <h4>Navigate to Assignments</h4>
+      <p>Click <strong>Assignments</strong> in the nav. Show the summary cards at the top: Total, Assigned, In Progress, Completed, Overdue.</p>
+      <span class="click">🖱 Navigate to /assignments</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">2</div>
+    <div class="action-body">
+      <h4>Show the assignments table</h4>
+      <p>Scroll the table to show all columns: Training, User, Product, Status badge, Deadline, Assigned date.</p>
+      <span class="click">📜 Slowly scroll table</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-cms">3</div>
+    <div class="action-body">
+      <h4>Open "New Assignment" modal</h4>
+      <p>Click the <strong>+ New Assignment</strong> button. Show the training dropdown, user ID field, product, and deadline date picker. Close without submitting.</p>
+      <span class="click">➕ Click New Assignment → show modal</span>
+    </div>
+  </div>
+</div>
+<div class="script-box">
+  <div class="label">🎙 Narration Script</div>
+  <p>"Assignments close the loop between content and learner. Managers pick any published training, assign it to a learner with a deadline, and it immediately appears on their mobile app. Status updates automatically as the learner progresses — no manual check-ins needed."</p>
+</div>
+<div class="highlight">
+  <p><strong>Transition point:</strong> <em>"Now let's switch to the learner side and see what the mobile experience looks like."</em> — Switch browser tab to <strong>localhost:8083</strong></p>
+</div>`
+},
+
+// ─── 8: MOBILE HOME ─────────────────────────────────────────
+{
+  part:'mobile',
+  html:`
+<div class="step-header">
+  <div class="tag tag-mobile">Mobile App · Step 1</div>
+  <h2>My Trainings — Home Screen</h2>
+  <p>The learner's personalised training feed — smart-sorted by urgency, with progress bars and tab filters.</p>
+</div>
+<div class="timing">⏱ ~50 seconds on screen</div>
+<div class="url-bar">
+  <div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
+  <span class="url-text">http://localhost:8083</span>
+</div>
+<div class="actions">
+  <div class="action-card">
+    <div class="action-num action-num-mobile">1</div>
+    <div class="action-body">
+      <h4>Open the Mobile App</h4>
+      <p>Switch to the tab with <strong>localhost:8083</strong>. The app loads the training list. Wait for all cards to appear before narrating.</p>
+      <span class="click">🖱 Switch to mobile tab</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">2</div>
+    <div class="action-body">
+      <h4>Point out the sort order</h4>
+      <p>Trainings appear in priority order: <em>In Progress</em> at top (if any), then <em>Not Started</em> sorted by deadline, then <em>Completed</em>. Narrate this logic.</p>
+      <span class="click">🖱 Hover over first 2-3 cards</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">3</div>
+    <div class="action-body">
+      <h4>Highlight card details</h4>
+      <p>On one card, point out: progress bar, slide count, locale chips (EN · HI · BN), due date badge with urgency ("3d left"), and the Resume/Start button.</p>
+      <span class="click">🖱 Hover slowly over one training card</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">4</div>
+    <div class="action-body">
+      <h4>Click through tab filters</h4>
+      <p>Click <strong>In Progress</strong> tab, then <strong>Completed</strong>, then back to <strong>All</strong>. This shows real-time filtering without a page reload.</p>
+      <span class="click">🖱 Click each tab filter</span>
+    </div>
+  </div>
+</div>
+<div class="script-box">
+  <div class="label">🎙 Narration Script</div>
+  <p>"On the mobile app, each learner sees their personalised training feed. Trainings are automatically sorted — what's most urgent appears at the top. Each card shows exactly where they left off, which languages are available, and how much time they have before the deadline. One tap resumes exactly where they stopped."</p>
+</div>`
+},
+
+// ─── 9: SLIDE PLAYER ────────────────────────────────────────
+{
+  part:'mobile',
+  html:`
+<div class="step-header">
+  <div class="tag tag-mobile">Mobile App · Step 2</div>
+  <h2>Training Player — Slide Navigation</h2>
+  <p>The main learning screen — full-resolution slides with AI narration, language switching, and integrated quiz and chat.</p>
+</div>
+<div class="timing">⏱ ~60 seconds on screen</div>
+<div class="url-bar">
+  <div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
+  <span class="url-text">http://localhost:8083 → tap Start / Resume on a training</span>
+</div>
+<div class="actions">
+  <div class="action-card">
+    <div class="action-num action-num-mobile">1</div>
+    <div class="action-body">
+      <h4>Tap Start / Resume</h4>
+      <p>Click the Start or Resume button on a training card. The player opens and the first slide loads. Progress is initialised in the backend automatically.</p>
+      <span class="click">▶ Click Start/Resume</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">2</div>
+    <div class="action-body">
+      <h4>Show the slide image</h4>
+      <p>Let slide 1 display for 3 seconds. Point out the full-resolution slide rendered from the original PowerPoint — no quality loss.</p>
+      <span class="click">👁 Pause on slide 1</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">3</div>
+    <div class="action-body">
+      <h4>Navigate to slide 2 and slide 3</h4>
+      <p>Click the right arrow or swipe right. Navigate through at least 3 slides. Watch the progress bar advance at the top.</p>
+      <span class="click">→ Click next arrow 2-3 times</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">4</div>
+    <div class="action-body">
+      <h4>Point out the progress bar</h4>
+      <p>Highlight the slide progress indicator and the percentage shown. This is synced to the backend on every slide change — it persists across sessions.</p>
+      <span class="click">📊 Point to progress bar</span>
+    </div>
+  </div>
+</div>
+<div class="script-box">
+  <div class="label">🎙 Narration Script</div>
+  <p>"Opening a training takes the learner directly into the slide player. The slides are extracted directly from the original PowerPoint — every animation, chart, and image is preserved. Progress is tracked per slide and synced to the server instantly — if the learner closes the app and reopens it on any device, they resume exactly where they left off."</p>
+</div>`
+},
+
+// ─── 10: AUDIO + LANGUAGE ───────────────────────────────────
+{
+  part:'mobile',
+  html:`
+<div class="step-header">
+  <div class="tag tag-mobile">Mobile App · Step 3</div>
+  <h2>AI Audio Narration &amp; Language Switcher</h2>
+  <p>Each slide has AI-generated native-language narration. Learners can switch languages mid-training without losing their place.</p>
+</div>
+<div class="timing">⏱ ~50 seconds on screen</div>
+<div class="actions">
+  <div class="action-card">
+    <div class="action-num action-num-mobile">1</div>
+    <div class="action-body">
+      <h4>Press Play on the audio player</h4>
+      <p>Click the Play button in the audio panel. The AI-generated English narration plays. Let it run for 5–8 seconds so viewers can hear the voice quality.</p>
+      <span class="click">▶ Press Play — let it run 5-8s</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">2</div>
+    <div class="action-body">
+      <h4>Switch language to Hindi (HI)</h4>
+      <p>Click the language switcher and select <strong>HI</strong> (Hindi). The audio player loads the Hindi narration for the same slide. Press play again.</p>
+      <span class="click">🌐 Click language switcher → select HI → Play</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">3</div>
+    <div class="action-body">
+      <h4>Let Hindi audio play for 5 seconds</h4>
+      <p>This demonstrates that the same slide content is narrated in a completely different voice and language — no manual recording involved.</p>
+      <span class="click">🎵 Let Hindi play 5s</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">4</div>
+    <div class="action-body">
+      <h4>Navigate to the next slide</h4>
+      <p>Move to slide 2 or 3. Notice the locale preference persists — the next slide also plays in Hindi until you switch back.</p>
+      <span class="click">→ Click next slide</span>
+    </div>
+  </div>
+</div>
+<div class="highlight">
+  <p><strong>Key differentiator:</strong> 6 languages × N slides = N×6 audio files, all generated automatically during the ingestion pipeline. Zero manual recording effort by the content team.</p>
+</div>
+<div class="script-box">
+  <div class="label">🎙 Narration Script</div>
+  <p>"Every slide comes with AI-generated narration in up to six languages — English, Hindi, Tamil, Telugu, Marathi, and Bengali. The learner simply picks their preferred language and the audio switches instantly. For field teams working across different regions, this removes the language barrier entirely — no subtitles, no reading, just listen and learn in your native tongue."</p>
+</div>`
+},
+
+// ─── 11: AI CHATBOT ─────────────────────────────────────────
+{
+  part:'mobile',
+  html:`
+<div class="step-header">
+  <div class="tag tag-mobile">Mobile App · Step 4</div>
+  <h2>AI FAQ Chatbot — RAG Assistant</h2>
+  <p>An always-available chat interface that answers product questions from the training content using semantic search and GPT-4o.</p>
+</div>
+<div class="timing">⏱ ~60 seconds on screen</div>
+<div class="actions">
+  <div class="action-card">
+    <div class="action-num action-num-mobile">1</div>
+    <div class="action-body">
+      <h4>Open the AI Chat panel</h4>
+      <p>Click the chat icon or the <strong>Ask AI</strong> button in the player. The chat interface opens at the bottom or side of the screen.</p>
+      <span class="click">💬 Click Ask AI / chat icon</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">2</div>
+    <div class="action-body">
+      <h4>Show the FAQ hint chips</h4>
+      <p>The chat shows suggested questions as chips at the top — pre-loaded from the training's FAQ data. Hover over 2-3 chips to let viewers read them.</p>
+      <span class="click">🖱 Hover over FAQ hint chips</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">3</div>
+    <div class="action-body">
+      <h4>Type a relevant product question</h4>
+      <p>Type a specific question about the training content — e.g. <em>"What is the warranty period?"</em> or <em>"What are the key features of this product?"</em>. Send it.</p>
+      <span class="click">⌨️ Type question → Send</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">4</div>
+    <div class="action-body">
+      <h4>Read the AI response aloud</h4>
+      <p>The answer arrives in 1–3 seconds, grounded in the training's FAQ content. Read the key sentence for the camera, then scroll to show the full response.</p>
+      <span class="click">📜 Read response, scroll to show full text</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">5</div>
+    <div class="action-body">
+      <h4>Ask one more question — intentionally vague</h4>
+      <p>Type something the training probably doesn't cover — e.g. <em>"What is the CEO's name?"</em>. The AI should say it doesn't have that info and log it as an unanswered question.</p>
+      <span class="click">⌨️ Type out-of-scope question → Send</span>
+    </div>
+  </div>
+</div>
+<div class="script-box">
+  <div class="label">🎙 Narration Script</div>
+  <p>"Built into every training is an AI assistant powered by retrieval-augmented generation. Learners can ask any question about the product or training content, and the AI searches through all the embedded FAQ knowledge to give a grounded, accurate answer. If it doesn't know — it says so, and that gap is automatically logged for the content team to review on the CMS dashboard we saw earlier."</p>
+</div>`
+},
+
+// ─── 12: QUIZ ───────────────────────────────────────────────
+{
+  part:'mobile',
+  html:`
+<div class="step-header">
+  <div class="tag tag-mobile">Mobile App · Step 5</div>
+  <h2>AI Quiz — Submit &amp; Evaluate</h2>
+  <p>Free-text quiz answers evaluated in real time by GPT-4o against a training-specific rubric.</p>
+</div>
+<div class="timing">⏱ ~70 seconds on screen</div>
+<div class="actions">
+  <div class="action-card">
+    <div class="action-num action-num-mobile">1</div>
+    <div class="action-body">
+      <h4>Navigate to a slide with a quiz</h4>
+      <p>Use the next button to find a slide that shows the <strong>Quiz</strong> button (usually highlighted in a distinct colour). The button only appears for slides that have a quiz question.</p>
+      <span class="click">→ Navigate slides until Quiz button appears</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">2</div>
+    <div class="action-body">
+      <h4>Open the quiz modal</h4>
+      <p>Click the <strong>Take Quiz</strong> button. The modal opens showing the quiz question for this slide in the learner's selected locale.</p>
+      <span class="click">🧩 Click Take Quiz button</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">3</div>
+    <div class="action-body">
+      <h4>Read the question aloud</h4>
+      <p>Pause on the question text for 3 seconds. This shows the question is derived from the Excel data sheet uploaded during content creation.</p>
+      <span class="click">👁 Pause on question — read aloud</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">4</div>
+    <div class="action-body">
+      <h4>Type a partial answer</h4>
+      <p>Type a reasonable but not perfect answer — e.g. mention 2 out of 3 key points. This makes the scoring result more interesting to show.</p>
+      <span class="click">⌨️ Type partial answer (2-3 sentences)</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">5</div>
+    <div class="action-body">
+      <h4>Submit and wait for AI evaluation</h4>
+      <p>Click <strong>Submit</strong>. A loading state appears (1–3 seconds) while GPT-4o evaluates. Then the result card animates in.</p>
+      <span class="click">📤 Click Submit — wait for result</span>
+    </div>
+  </div>
+  <div class="action-card">
+    <div class="action-num action-num-mobile">6</div>
+    <div class="action-body">
+      <h4>Read the evaluation result</h4>
+      <p>Point out: the <strong>score bar</strong> (e.g. 7/10), the <strong>feedback paragraph</strong> written by GPT-4o, the <strong>Strengths</strong> section, and the <strong>Areas for Improvement</strong>.</p>
+      <span class="click">📊 Scroll through evaluation result</span>
+    </div>
+  </div>
+</div>
+<div class="script-box">
+  <div class="label">🎙 Narration Script</div>
+  <p>"Each training has quiz questions linked to specific slides. The learner types a free-text answer — or records a voice response — and GPT-4o evaluates it against a detailed rubric. Within seconds you get a score, a written analysis of what the learner got right, and specific coaching on what to improve. This replaces manual grading entirely and scales to hundreds of learners without additional overhead."</p>
+</div>`
+},
+
+// ─── 13: CLOSING ────────────────────────────────────────────
+{
+  part:'e2e',
+  html:`
+<div class="center-content" style="min-height:50vh">
+  <div style="font-size:3.5rem">🎉</div>
+  <h2>Recording Complete</h2>
+  <p class="sub">You've covered the full end-to-end flow. Here's your closing summary to read on camera.</p>
+</div>
+<div class="script-box" style="max-width:700px;margin:0 auto 24px">
+  <div class="label">🎙 Closing Narration</div>
+  <p>"VirtualCoach is a full end-to-end AI training platform. Content managers upload a PowerPoint and an Excel sheet — the system takes it from there: extracting slides, generating native-language audio in six languages, embedding FAQ knowledge for semantic search, and making it all available on mobile within minutes. Learners train at their own pace in their native language, get instant AI coaching on quiz answers, and have a 24/7 FAQ assistant at their fingertips. Managers track everything in real time — completion rates, quiz scores, knowledge gaps — without touching a spreadsheet."</p>
+</div>
+<div class="key-points" style="max-width:700px;margin:0 auto">
+  <div class="kp"><div class="kp-icon">📤</div><h4>PPTX + Excel → Live Training</h4><p>Fully automated ingestion pipeline. Zero manual audio recording.</p></div>
+  <div class="kp"><div class="kp-icon">🌐</div><h4>6 Languages</h4><p>EN · HI · TA · TE · MR · BN — AI-generated voice per locale per slide.</p></div>
+  <div class="kp"><div class="kp-icon">🤖</div><h4>GPT-4o Evaluation</h4><p>Rubric-based quiz scoring with written coaching feedback.</p></div>
+  <div class="kp"><div class="kp-icon">💬</div><h4>RAG FAQ Chatbot</h4><p>Grounded answers from training content. Gaps logged for admins.</p></div>
+  <div class="kp"><div class="kp-icon">📊</div><h4>Admin Dashboard</h4><p>Completion rates, scores, missed FAQs — real-time.</p></div>
+  <div class="kp"><div class="kp-icon">🔄</div><h4>Continuous Improvement</h4><p>Unanswered questions → Excel update → re-run pipeline → better AI.</p></div>
+</div>
+<div style="text-align:center;margin-top:24px;font-size:13px;color:var(--muted)">
+  <span style="background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;padding:8px 20px;">
+    📧 genailab.gem3@samsung.com &nbsp;·&nbsp; 🖥️ localhost:3000 &nbsp;·&nbsp; 📱 localhost:8083
+  </span>
+</div>`
+}
+];
+
+// ── State ────────────────────────────────────────────────────
+let cur = 0;
+const TOTAL = STEPS.length;
+const doneSet = new Set();
+
+const content = document.getElementById('content');
+const stepCounter = document.getElementById('step-counter');
+const partBadge = document.getElementById('part-badge');
+const progressBar = document.getElementById('progress-bar');
+const progressText = document.getElementById('progress-text');
+const btnPrev = document.getElementById('btn-prev');
+const btnNext = document.getElementById('btn-next');
+const stepItems = document.querySelectorAll('.step-item');
+
+function render(idx) {
+  cur = idx;
+  const step = STEPS[cur];
+
+  // Content
+  content.innerHTML = step.html;
+
+  // Part badge
+  partBadge.className = '';
+  if (step.part === 'cms') { partBadge.className = 'badge-cms'; partBadge.textContent = 'Part 1 — CMS Portal'; }
+  else if (step.part === 'mobile') { partBadge.className = 'badge-mobile'; partBadge.textContent = 'Part 2 — Mobile App'; }
+  else if (step.part === 'e2e') { partBadge.className = 'badge-e2e'; partBadge.textContent = 'End-to-End Flow'; }
+  else { partBadge.className = 'badge-start'; partBadge.textContent = 'Setup'; }
+
+  // Step counter (skip setup)
+  const stepNum = cur === 0 ? 'Setup' : `Step ${cur} of ${TOTAL - 2}`;
+  stepCounter.textContent = stepNum;
+
+  // Nav buttons
+  btnPrev.disabled = cur === 0;
+  btnNext.textContent = cur === TOTAL - 1 ? 'Done ✓' : (cur === 0 ? 'Start →' : 'Next →');
+  if (cur === TOTAL - 1) btnNext.className = 'primary'; else btnNext.className = 'primary';
+
+  // Sidebar highlight
+  stepItems.forEach((el, i) => {
+    el.classList.remove('active');
+    if (doneSet.has(i) && i !== cur) el.classList.add('done');
+    else el.classList.remove('done');
+  });
+  if (stepItems[cur]) stepItems[cur].classList.add('active');
+
+  // Progress
+  const pct = Math.round(cur / (TOTAL - 1) * 100);
+  progressBar.style.width = pct + '%';
+  progressText.textContent = `${cur} / ${TOTAL - 1} steps`;
+
+  // Scroll nav item into view
+  if (stepItems[cur]) stepItems[cur].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+  // Checklist interactivity
+  document.querySelectorAll('.check-item').forEach(item => {
+    item.addEventListener('click', () => item.classList.toggle('checked'));
+  });
+}
+
+function next() {
+  doneSet.add(cur);
+  if (cur < TOTAL - 1) render(cur + 1);
+}
+function prev() {
+  if (cur > 0) render(cur - 1);
+}
+
+btnNext.addEventListener('click', next);
+btnPrev.addEventListener('click', prev);
+stepItems.forEach((el, i) => el.addEventListener('click', () => render(i)));
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || (e.key === ' ' && e.target.tagName !== 'INPUT')) { e.preventDefault(); next(); }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
+});
+
+render(0);
+</script>
+</body>
+</html>
